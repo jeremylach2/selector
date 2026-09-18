@@ -17,12 +17,25 @@ a session with no separate API key configured.
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 from anthropic import Anthropic
+from dotenv import load_dotenv
 from pydantic import ValidationError
 
 from selector.tagger.enrich import enrich_tracks
+
+load_dotenv()
+
+
+def _build_client() -> Anthropic:
+    """Some API keys aren't scoped to a single workspace, in which case the
+    API requires the workspace to be named explicitly via this header."""
+    workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
+    if workspace_id:
+        return Anthropic(default_headers={"anthropic-workspace-id": workspace_id})
+    return Anthropic()
 from selector.tagger.schema import LabelRecord, PredictedLabels, TeacherInput
 
 DEFAULT_OUTPUT_PATH = Path("data/labels.jsonl")
@@ -33,18 +46,40 @@ SYSTEM_PROMPT = """You are labelling music tracks for a recommendation system's 
 For each track you are given its metadata, lyrics (if available), and — where available —
 MEASURED audio features (tempo, energy, danceability, etc). Reason about valence and intensity
 knowing the measured tempo/energy where given; don't guess at them from text alone if a measured
-value is present. Respond only by calling the emit_labels tool."""
+value is present. mood_tags must contain between 1 and 3 tags, picking the ones that fit best —
+never more than 3. lyrical_theme must be a short phrase, at most 60 characters — a few words,
+not a sentence. valence and intensity are each a float between 0.0 and 1.0 inclusive — never a
+1-10 scale or an integer outside that range. Respond only by calling the emit_labels tool."""
 
 TOOL_NAME = "emit_labels"
+
+
+def _strip_unsupported_strict_keywords(node: object) -> None:
+    """Strict tool use validates type/enum/required structurally but rejects
+    numeric range keywords outright (400: "properties maximum, minimum are
+    not supported"). Range checking still happens afterwards when the
+    response is re-validated against the pydantic model."""
+    unsupported_keys = ("minimum", "maximum", "minItems", "maxItems", "minLength", "maxLength")
+    if isinstance(node, dict):
+        for key in unsupported_keys:
+            node.pop(key, None)
+        for value in node.values():
+            _strip_unsupported_strict_keywords(value)
+    elif isinstance(node, list):
+        for item in node:
+            _strip_unsupported_strict_keywords(item)
 
 
 def _build_tool() -> dict:
     schema = PredictedLabels.model_json_schema()
     schema.pop("title", None)
+    schema["additionalProperties"] = False
+    _strip_unsupported_strict_keywords(schema)
     return {
         "name": TOOL_NAME,
         "description": "Emit the predicted (subjective) labels for one track.",
         "input_schema": schema,
+        "strict": True,
     }
 
 
@@ -109,7 +144,7 @@ def run_labelling(
     model: str = DEFAULT_MODEL,
     variant: str = "default",
 ) -> None:
-    client = Anthropic()
+    client = _build_client()
     cached = _load_cached(output_path)
     total_input_tokens = 0
     total_output_tokens = 0

@@ -122,21 +122,26 @@ hash lengths on the same pooled-MNIST input.
 
 ![FlyHash vs. classical LSH vs. the real FlyWire circuit](img/fly_vs_lsh_connectome.png)
 
-**The real connectome tracks the idealised random circuit closely at short
-hash lengths** (0.090 vs. 0.092 mAP at 4 bits) **and both clearly beat
-classical LSH there** (0.019 mAP) — the paper's core advantage survives the
-swap from a random circuit to a real, evolved one. The real circuit's edge
-over classical LSH narrows as the hash length grows, the same way the
-idealised circuit's does, and classical LSH catches up by 64 bits. Reported
-straight: the real wiring is not a *better* random projection for this
-generic image-retrieval task, it reproduces the idealised circuit's
-behaviour rather than improving on it. That is itself informative — the real
-PN->KC wiring's specific structure (compared to an independent random draw
-of the same sparsity) buys nothing extra on a domain (handwritten digit
-images) the fly's circuit was never evolved for. Whether it does better on
-its native domain, actual olfactory or track-feature space, is exactly what
-Step 12's re-run of this same comparison on the vibe tagger's real features
-will test.
+At 4 bits, real and idealised are statistically tied and both clearly beat classical LSH. From 8 bits onward, real FlyHash falls increasingly behind idealised FlyHash, and by 64 bits it also falls behind classical LSH (.23 vs. .34). It underperforms the plain-random baseline outright. Idealised FlyHash converges with classical LSH at 64 bits; real FlyHash does not follow that trend and instead plateaus well below both.
+
+Conclusion: the real connectome's wiring, once adapted to the tagger's feature width via pool_to_width, does not just fail to improve on a matched-statistics random circuit — it measurably underperforms one, and the gap widens with hash length. This is a stronger and more specific claim than "no difference," and it should be treated as a live hypothesis to check against on real vibe-tagger features in Step 12, not assumed to be an MNIST-specific artifact.
+
+Why would idealised beat real at all?
+
+This is the interesting part, and it likely comes down to effective independence between input channels, not anything about the biology being "worse."
+
+Idealised FlyHash's input dimensions are, by construction, fully independent. Each of the 50 synthetic PNs is an unrelated random variable, and each KC samples ~6 of them at random. Every added KC (i.e., every added bit as hash length grows) gets a fresh, independent random combination of independent inputs. That's exactly the condition under which random projection hashing works well and scales cleanly with more bits — more bits keeps buying genuinely new information because nothing is redundant.
+
+Real FlyWire PNs are not independent in the same way, and the pooling step compounds it:
+
+The real population includes many sister cells — multiple PNs serving the same glomerulus (same odorant-receptor channel), which are highly correlated with each other, not independent signals.
+It also includes multiglomerular PNs that pool across several glomeruli already, so some "channels" are themselves blends of others before pooling even starts.
+pool_to_width then groups 344 real PNs into a much smaller number of buckets purely by pn_index % d_in — an arbitrary index-based split, not one that accounts for which PNs are correlated. So a bucket can easily end up dominated by several correlated sister cells while genuinely distinct signal gets merged together elsewhere, or diluted by summation with unrelated PNs in the same bucket.
+On top of that, 145 KCs have no direct ALPN input at all (all-zero rows) and are still included in the matrix — every one of those is a "bit" that contributes literally nothing to the hash.
+
+Put together: real FlyHash's nominal input/hash dimensionality is larger, but its effective dimensionality — the number of genuinely independent signals actually feeding the hash — is smaller than the count suggests, because of correlated pooling and dead cells. Idealised FlyHash has no such waste; every synthetic dimension and every KC is doing real, independent work.
+
+That explains the specific shape of the result, too: at 4 bits, you're barely using any capacity in either case, so the redundancy in the real circuit hasn't had room to hurt yet — both look similar. As hash length grows, idealised keeps extracting real information from its always-independent inputs, while real keeps re-spending bits on correlated or dead signal, so the gap opens up and grows. That's a textbook signature of effective-rank collapse: nominal dimensionality growing while true information content lags behind, and it's directly testable (e.g., compute the effective rank of the real pooled matrix vs. the idealised one, or rerun pooling with correlation-aware bucketing instead of index modulo, and see if the gap shrinks).
 
 ## Citations
 

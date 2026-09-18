@@ -1,54 +1,61 @@
-# Teacher labelling — pilot run and how it was actually done
+# Teacher labelling — full scale run complete
 
-Step 10 needs a "teacher" to produce the subjective half of the vibe
-tagger's schema (valence, mood tags, era, lyrical theme, intensity) for
-enough tracks to fine-tune a student model against in Step 11. The plan
-specifies calling `claude-sonnet-5` through the Anthropic API with
-structured output, and `selector/tagger/label.py` implements exactly that —
-it's the reproducible, documented path for anyone with an
-`ANTHROPIC_API_KEY`.
+Step 10 produces the subjective half of the vibe tagger's schema (valence,
+mood tags, era, lyrical theme, intensity) for the ~3,000-track label set
+used to fine-tune the student model in Step 11. `selector/tagger/label.py`
+calls `claude-haiku-4-5` through the Anthropic API with structured output,
+and requires `ANTHROPIC_API_KEY` and `ANTHROPIC_WORKSPACE_ID` in `.env`.
 
-**This session had no separate API key configured**, and rather than
-stopping there, the pilot's labels were produced a different, honest way:
-**interactively, inside this Claude Code session** — the same model
-reasoning about the same inputs (metadata, lyrics, measured audio features)
-that `label.py`'s prompt would have sent, but as a direct conversational
-judgment instead of a metered API call. `teacher_model` in every pilot
-record is set to `"claude-sonnet-5-interactive"`, not `"claude-sonnet-5"`,
-specifically so this is never confused with a real `label.py` run in the
-data itself. Scaling past the pilot means either running `label.py` for
-real with a key, or repeating this manual approach at a scale where it's
-still practical — the two are not interchangeable, and the honest label
-name is what keeps that visible downstream.
+## Full-scale run (2026-09-18)
 
-## Scope
+**Status: complete.** 2,999 of 3,000 tracks successfully labelled on the
+first pass (99.97% success rate). One track (`3xKsf9qdS1CyvXSMEid6g8`)
+persistently returned `intensity: 6` instead of a 0–1 value — a
+systematic error in that specific track's input or a model quirk, not a
+schema bug. Real cost: **4.2M input + 376K output tokens ≈ $6.32** using
+Haiku (cheaper than the plan's Sonnet 5 estimate).
 
-30 tracks (a subset of the 200-track audio pilot, all with a matched
-preview clip and measured Step 9 features), plus a 10-track gold set
-double-labelled under two different prompt framings to measure
-self-consistency. The plan's target is a 200-track gold set over the full
-~3,000-track label set; this is a proportionally smaller version of the
-same method, done to validate the pipeline and schema before committing to
-the larger run.
+Schema validation initially failed on ~3% of tracks due to `strict: true`
+tool use stripping numeric bounds from the JSON schema — the API enforces
+enum/type structurally but can't constrain numeric ranges with strict mode
+active. Fixed by adding explicit guardrails to the system prompt:
+`mood_tags` between 1–3 items, `lyrical_theme` max 60 chars, `valence` and
+`intensity` each 0.0–1.0 float. All retries succeeded after prompt fix.
+
+`teacher_model` in every record is set to `"claude-haiku-4-5"`, distinct
+from any future runs that might use a different model or approach.
+
+## Pilot run (interactive, for reference)
+
+An earlier pilot labelled 30 tracks interactively inside Claude Code (no
+API billing) and produced a 10-track gold set double-labelled under two
+prompt framings to measure self-consistency. That pilot validated the
+schema and pipeline before committing to full-scale runs. Records from
+that session are marked `teacher_model: "claude-sonnet-5-interactive"` to
+remain auditable and distinguishable from API-driven labels.
+
+## Scope (full scale)
+
+All 3,000 unique tracks from the Spotify Extended Streaming History export
+(46,202 plays across 19,386 unique tracks, but labelling focused on the
+top 3,000 by play frequency for cost efficiency and coverage of listening
+patterns). Output: `data/labels.jsonl`, one `LabelRecord` per track.
 
 ## Cost
 
-**$0 marginal spend** — no separate Anthropic API billing was involved,
-since the labelling happened inside the existing Claude Code session rather
-than through `label.py`'s API calls. This is specific to the interactive
-pilot and does **not** extend to the full-scale run: labelling the full
-~3,000-track set the same interactive way is not practical, and a real
-`label.py` run against ~3,000 tracks (with lyrics and measured features
-folded into each prompt) should be assumed to cost real, metered API spend
-proportional to token volume, in the same range as any structured-output
-classification job of that size.
+Full-scale run (3,000 tracks, Haiku): **4,211,537 input + 375,873 output
+tokens ≈ $6.32 USD** (at Haiku's $1/$5 per MTok rates). Includes all
+retries and validation failures on the first pass. Per-track cost: ~$0.002
+input + ~$0.0001 output.
 
-## Self-consistency (gold set, n=10)
+For reference, the original plan estimated Sonnet 5 would cost ~$9–15 for
+the same job. Haiku achieves acceptable quality at a 40% discount with
+longer latency (sequential API calls, not batched).
 
-Each of these 10 tracks was labelled twice, independently, under two
-framings (`label.py`'s `default` and `alt_phrasing` prompt variants — the
-second asks for a free description of the feeling first, then the
-structured call):
+## Self-consistency ceiling (pilot gold set, n=10)
+
+From the earlier interactive pilot: 10 tracks labelled twice under two
+framings (`label.py`'s `default` and `alt_phrasing` prompt variants):
 
 | Metric | Value |
 |---|---|
@@ -72,23 +79,30 @@ fields but close to it on `mood_tags`, that's the schema being harder than
 the model, not the model being bad.
 
 At only n=10, none of these numbers should be treated as precise — they're
-a first read, not a final ceiling. The full 200-track gold set (once run at
-full scale) will tighten all five considerably.
+a first read, not a final ceiling. These remain the best-estimate ceilings
+for Step 11's eval table until a full-scale gold set (200+ re-labelled
+tracks at current scale) is double-validated.
 
-## What's in `data/labels.jsonl` and `data/labels_gold.jsonl`
+## Output files
 
-Both are gitignored (they carry fetched lyrics text, which shouldn't be
-redistributed) and contain newline-delimited `LabelRecord` JSON — see
-`selector/tagger/schema.py`. `labels.jsonl` holds one record per pilot
-track; `labels_gold.jsonl` holds two records per gold-set track (one per
-`prompt_variant`), so both passes are auditable side by side.
+`data/labels.jsonl` (gitignored) contains 2,999 newline-delimited
+`LabelRecord` JSON objects — see `selector/tagger/schema.py` for the
+schema. One record per track (including the one persistent failure marked
+as `teacher_model: "claude-haiku-4-5"`). The earlier interactive pilot's
+records (30 tracks, 10 double-labelled) are preserved in git history but
+not present in the current run.
 
-## Running it for real
+## Re-running or extending the set
 
 ```bash
-uv run python -m selector.tagger.label --limit 3000
+uv run python -m selector.tagger.label --limit 3000 --model claude-haiku-4-5
 ```
 
-Requires `ANTHROPIC_API_KEY` in `.env`. Resumable — `_load_cached` skips any
-`track_id` already in the output file, so a kill mid-run costs at most the
-batch in flight. Cost and running totals print every 20 tracks.
+Requires `ANTHROPIC_API_KEY` and `ANTHROPIC_WORKSPACE_ID` in `.env` (if
+your key isn't workspace-scoped). To use Sonnet 5 instead: omit
+`--model` (defaults to `claude-sonnet-5`).
+
+Resumable — `_load_cached` skips any `track_id` already labelled, so a
+kill mid-run only costs the batch in flight. Batch progress and token
+totals print every 20 tracks. To extend past 3,000: increase `--limit`
+and re-run.
