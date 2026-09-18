@@ -1,0 +1,41 @@
+# Personal data — never committed
+my_spotify_data.zip
+data/raw/
+*.duckdb
+*.parquet
+data/audio/
+data/audio_matches.parquet
+data/essentia_models/
+data/flywire/
+data/lyrics/
+data/dj_runs/
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.uv/
+
+# Node / web
+node_modules/
+.next/
+out/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Planning docs — internal, not part of the public repo
+PROMPT-PACK.md
+Selector — Project Plan.md
+
+SKILL.md

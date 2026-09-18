@@ -1,0 +1,29 @@
+[project]
+name = "selector"
+version = "0.1.0"
+description = "A local music taste warehouse, MCP server, and fly-brain recommendation engine built from a Spotify Extended Streaming History export."
+readme = "README.md"
+license = "MIT"
+authors = [
+    { name = "Jeremy Lachowicz", email = "jdlachowicz@mail.roanoke.edu" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "pandas>=2.2",
+    "pyarrow>=17.0",
+    "duckdb>=1.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "ruff>=0.7",
+]
+
+[build-system]
+requires = ["uv_build>=0.10.2,<0.11.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
