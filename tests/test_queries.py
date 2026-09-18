@@ -57,3 +57,56 @@ def test_rediscovery_candidates():
     df = queries.rediscovery_candidates()
     assert not df.empty
     assert list(df.columns) == ["track_id", "name", "artist", "play_count", "last_played"]
+
+
+def test_search_library():
+    # Search for a common single letter so the match is virtually guaranteed
+    # to hit something in any real library, without depending on its content.
+    df = queries.search_library("a", limit=5)
+    assert not df.empty
+    assert len(df) <= 5
+    assert list(df.columns) == [
+        "track_id",
+        "name",
+        "artist",
+        "album",
+        "play_count",
+        "skip_rate",
+        "net_verdict",
+    ]
+
+
+def test_search_library_no_match():
+    df = queries.search_library("zzzzzznonexistentquery")
+    assert df.empty
+
+
+def test_track_detail_by_id():
+    top = queries.top_artists(limit=1)
+    assert not top.empty
+    some_track = queries.search_library(top.iloc[0]["artist"], limit=1)
+    assert not some_track.empty
+    track_id = some_track.iloc[0]["track_id"]
+
+    df = queries.track_detail(track_id)
+    assert len(df) == 1
+    assert df.iloc[0]["track_id"] == track_id
+
+
+def test_track_detail_no_match():
+    df = queries.track_detail("zzzzzznonexistentquery")
+    assert df.empty
+
+
+def test_warehouse_summary():
+    df = queries.warehouse_summary()
+    assert len(df) == 1
+    assert list(df.columns) == [
+        "earliest_play",
+        "latest_play",
+        "total_plays",
+        "unique_tracks",
+        "unique_artists",
+        "total_hours",
+    ]
+    assert df.iloc[0]["total_plays"] > 0

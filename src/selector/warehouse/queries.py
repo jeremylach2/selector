@@ -195,3 +195,66 @@ def rediscovery_candidates(
         ).df()
 
 
+def search_library(
+    query: str,
+    limit: int = 20,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> pd.DataFrame:
+    """Fuzzy substring search over track and artist names, ranked by play count."""
+    pattern = f"%{query.lower()}%"
+    with _connect(db_path) as con:
+        return con.execute(
+            """
+            SELECT track_id, name, artist, album, play_count, skip_rate, net_verdict
+            FROM tracks
+            WHERE lower(name) LIKE ? OR lower(artist) LIKE ?
+            ORDER BY play_count DESC
+            LIMIT ?
+            """,
+            [pattern, pattern, limit],
+        ).df()
+
+
+def track_detail(
+    track_id_or_name: str,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> pd.DataFrame:
+    """Full stats for one track, matched by exact `track_id` first, then by name substring.
+
+    Returns at most one row: the exact `track_id` match if there is one, else the
+    highest-play-count track whose name contains `track_id_or_name`.
+    """
+    with _connect(db_path) as con:
+        exact = con.execute(
+            "SELECT * FROM tracks WHERE track_id = ?", [track_id_or_name]
+        ).df()
+        if not exact.empty:
+            return exact
+        return con.execute(
+            """
+            SELECT * FROM tracks
+            WHERE lower(name) LIKE ?
+            ORDER BY play_count DESC
+            LIMIT 1
+            """,
+            [f"%{track_id_or_name.lower()}%"],
+        ).df()
+
+
+def warehouse_summary(db_path: Path = DEFAULT_DB_PATH) -> pd.DataFrame:
+    """Date range, total plays, unique tracks/artists, and total hours listened."""
+    with _connect(db_path) as con:
+        return con.execute(
+            """
+            SELECT
+                MIN(ts) AS earliest_play,
+                MAX(ts) AS latest_play,
+                COUNT(*) AS total_plays,
+                COUNT(DISTINCT track_id) AS unique_tracks,
+                COUNT(DISTINCT artist_name) AS unique_artists,
+                SUM(ms_played) / 3600000.0 AS total_hours
+            FROM plays
+            """
+        ).df()
+
+

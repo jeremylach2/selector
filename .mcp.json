@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "selector": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "--directory",
+        "D:/codeprojects/spotifyProject",
+        "run",
+        "selector-mcp"
+      ],
+      "env": {}
+    }
+  }
+}

@@ -12,13 +12,20 @@ dependencies = [
     "pandas>=2.2",
     "pyarrow>=17.0",
     "duckdb>=1.1",
+    "mcp>=2.2.0",
+    "httpx>=0.27",
+    "python-dotenv>=1.0",
 ]
 
 [dependency-groups]
 dev = [
     "pytest>=8.3",
     "ruff>=0.7",
+    "respx>=0.21",
 ]
+
+[project.scripts]
+selector-mcp = "selector.mcp.server:main"
 
 [build-system]
 requires = ["uv_build>=0.10.2,<0.11.0"]
