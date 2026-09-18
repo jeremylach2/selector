@@ -19,6 +19,21 @@ dependencies = [
     "scipy>=1.18.1",
     "scikit-learn>=1.9.1",
     "matplotlib>=3.11.2",
+    "librosa>=1.0",
+    "soundfile>=0.14",
+    "av>=13.0",
+    "pydantic>=2.9",
+    "anthropic>=0.40",
+]
+
+[project.optional-dependencies]
+# Only needed for selector.tagger.train (LoRA fine-tuning). Kept optional
+# so the rest of the project doesn't force a multi-GB torch download.
+finetune = [
+    "torch>=2.4",
+    "transformers>=4.45",
+    "peft>=0.13",
+    "datasets>=3.0",
 ]
 
 [dependency-groups]

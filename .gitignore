@@ -5,9 +5,14 @@ data/raw/
 *.parquet
 data/audio/
 data/audio_matches.parquet
+data/.audio_resolve_checkpoint.jsonl
 data/essentia_models/
 data/flywire/
 data/lyrics/
+data/labels.jsonl
+data/labels_gold.jsonl
+data/splits/
+data/runs/
 data/dj_runs/
 .env
 
