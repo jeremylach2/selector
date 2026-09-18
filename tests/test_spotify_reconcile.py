@@ -28,7 +28,9 @@ def _saved_item(track_id: str, name: str = "Fake Song", artist: str = "Fake Arti
 
 
 def test_saved_never_played_surfaces_unknown_track_id():
-    client = _FakeSpotifyClient([_saved_item("not-a-real-track-id", name="Unplayed", artist="Nobody")])
+    client = _FakeSpotifyClient(
+        [_saved_item("not-a-real-track-id", name="Unplayed", artist="Nobody")]
+    )
     result = reconcile_library(client)
 
     assert (result.saved_never_played["track_id"] == "not-a-real-track-id").any()

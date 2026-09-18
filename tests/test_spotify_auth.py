@@ -124,7 +124,10 @@ def test_get_valid_token_falls_back_to_full_flow_when_refresh_fails(tmp_path, mo
     def _fake_exchange(client_id, code, verifier):
         assert code == "auth-code"
         return auth.TokenSet(
-            access_token="brand-new", refresh_token="new-refresh", expires_at=time.time() + 3600, scope=""
+            access_token="brand-new",
+            refresh_token="new-refresh",
+            expires_at=time.time() + 3600,
+            scope="",
         )
 
     monkeypatch.setattr(auth, "_refresh_token", _fail_refresh)
