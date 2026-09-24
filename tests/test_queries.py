@@ -22,6 +22,38 @@ def test_top_artists():
     assert len(df) <= 5
 
 
+def test_top_tracks():
+    df = queries.top_tracks(limit=5)
+    assert not df.empty
+    assert list(df.columns) == ["track_id", "name", "artist", "album", "play_count"]
+    assert len(df) <= 5
+    assert df["play_count"].is_monotonic_decreasing
+
+
+def test_top_albums():
+    df = queries.top_albums(limit=5)
+    assert not df.empty
+    assert list(df.columns) == ["artist", "album", "play_count", "total_hours"]
+    assert len(df) <= 5
+    assert df["play_count"].is_monotonic_decreasing
+
+
+def test_top_albums_merges_edition_variants():
+    key_a = queries.normalize_album_key("The Beatles", "Abbey Road")
+    key_b = queries.normalize_album_key("the beatles", "Abbey Road (Remastered)")
+    assert key_a == key_b
+
+
+def test_artist_sprint():
+    df = queries.artist_sprint(top_n=5)
+    assert not df.empty
+    assert list(df.columns) == ["artist", "month", "play_count", "cumulative_plays"]
+    # every artist's cumulative total should be non-decreasing across its own months
+    for _, group in df.groupby("artist"):
+        cumulative = group.sort_values("month")["cumulative_plays"]
+        assert cumulative.is_monotonic_increasing
+
+
 def test_binged_then_abandoned():
     df = queries.binged_then_abandoned()
     assert not df.empty

@@ -11,6 +11,7 @@ in a chat transcript than a raw JSON dump. The warehouse path comes from the
 
 from __future__ import annotations
 
+import json
 import os
 from collections.abc import Callable
 from pathlib import Path
@@ -23,7 +24,7 @@ from mcp.server.mcpserver import MCPServer
 from selector.spotify.auth import SpotifyAuthError
 from selector.spotify.client import SpotifyAPIError, SpotifyClient
 from selector.spotify.reconcile import reconcile_library as _reconcile_library
-from selector.warehouse import queries
+from selector.warehouse import queries, wrapped
 
 # Loaded here, at import time, since Claude Desktop launches this process
 # directly and never sources a shell profile — SPOTIFY_CLIENT_ID etc. would
@@ -206,6 +207,39 @@ def rediscovery_candidates(dormant_months: int = 6, min_past_plays: int = 10) ->
         dormant_months=dormant_months,
         min_past_plays=min_past_plays,
     )
+
+
+@server.tool()
+def wrapped_report(top_n: int = 5, save_html: bool = False) -> str:
+    """Get a Spotify-Wrapped-style report over the full listening history:
+    total hours, top artists/tracks/albums, an artist "sprint" (monthly
+    play counts for every artist who ever cracked a top spot), peak
+    listening hour, and skip offenders. `top_n` controls how many entries
+    each ranked card keeps. This is the warehouse-only slice of the report —
+    it doesn't need audio features or the fly brain, so it always reflects
+    the full library. Set `save_html` to also write a standalone HTML story
+    to `data/wrapped_report.html` alongside the JSON at
+    `data/wrapped_report.json`.
+    """
+    db_path = _db_path()
+    if not db_path.exists():
+        return _missing_db_message(db_path)
+    try:
+        report = wrapped.build_report(top_n=top_n, db_path=db_path)
+    except Exception as exc:  # noqa: BLE001 - surfaced to the model as text, not a crash
+        return f"Report failed: {exc}"
+
+    out_dir = db_path.parent
+    (out_dir / "wrapped_report.json").write_text(
+        json.dumps(report, indent=2), encoding="utf-8"
+    )
+    note = f"\n_Report JSON saved to `{out_dir / 'wrapped_report.json'}`._"
+    if save_html:
+        html_path = out_dir / "wrapped_report.html"
+        html_path.write_text(wrapped.render_html(report), encoding="utf-8")
+        note += f" _HTML story saved to `{html_path}`._"
+
+    return wrapped.render_markdown(report) + note
 
 
 # -- live Spotify API tools ---------------------------------------------

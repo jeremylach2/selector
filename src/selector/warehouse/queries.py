@@ -6,12 +6,21 @@ DataFrame, so these compose cleanly as MCP tool implementations later.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import duckdb
 import pandas as pd
 
 from selector.warehouse.build import DEFAULT_DB_PATH
+
+# Strips edition/reissue noise ("(Deluxe Edition)", "(2011 Remaster)", ...)
+# so the same physical album played under slightly different tags groups as
+# one row in `top_albums`.
+_EDITION_SUFFIX_RE = re.compile(
+    r"\s*[\(\[](deluxe|remaster(ed)?|expanded|bonus track|anniversary|special)[^\)\]]*[\)\]]\s*",
+    re.IGNORECASE,
+)
 
 # Thresholds not exposed as function parameters, kept in one place so they're
 # easy to tune without hunting through the query bodies.
@@ -53,6 +62,102 @@ def top_artists(
             """,
             [start, start, end, end, limit],
         ).df()
+
+
+def top_tracks(
+    limit: int = 20,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> pd.DataFrame:
+    """Which tracks got the most plays, all-time?"""
+    with _connect(db_path) as con:
+        return con.execute(
+            """
+            SELECT track_id, name, artist, album, play_count
+            FROM tracks
+            ORDER BY play_count DESC
+            LIMIT ?
+            """,
+            [limit],
+        ).df()
+
+
+def normalize_album_key(artist: str, album: str) -> str:
+    text = f"{artist}|{album}".lower().strip()
+    text = _EDITION_SUFFIX_RE.sub(" ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def top_albums(
+    limit: int = 20,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> pd.DataFrame:
+    """Which albums got the most plays, grouped by a normalised (artist,
+    album) key so edition/reissue variants of the same album don't split
+    their plays across separate rows?
+    """
+    with _connect(db_path) as con:
+        raw = con.execute(
+            """
+            SELECT artist, album, play_count, total_ms
+            FROM tracks
+            WHERE album IS NOT NULL AND album != ''
+            """
+        ).df()
+    if raw.empty:
+        return pd.DataFrame(columns=["artist", "album", "play_count", "total_hours"])
+
+    raw["album_key"] = [
+        normalize_album_key(artist, album)
+        for artist, album in zip(raw["artist"], raw["album"])
+    ]
+    grouped = (
+        raw.groupby("album_key", as_index=False).agg(
+            artist=("artist", "first"),
+            album=("album", "first"),
+            play_count=("play_count", "sum"),
+            total_hours=("total_ms", lambda s: s.sum() / 3600000.0),
+        )
+    ).drop(columns=["album_key"])
+    return (
+        grouped.sort_values("play_count", ascending=False)
+        .head(limit)
+        .reset_index(drop=True)
+    )
+
+
+def artist_sprint(
+    top_n: int = 5,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> pd.DataFrame:
+    """Monthly play counts, cumulative, for every artist who ever cracked
+    that month's top `top_n` — the "race" behind an artist-sprint chart.
+
+    Only artists who reached the top `top_n` in at least one calendar month
+    are included, but each gets its *full* monthly history (not just the
+    months it ranked), so a returning favourite doesn't appear to teleport.
+    """
+    with _connect(db_path) as con:
+        artist_months = con.execute(
+            "SELECT artist, month, play_count FROM artist_months ORDER BY artist, month"
+        ).df()
+    columns = ["artist", "month", "play_count", "cumulative_plays"]
+    if artist_months.empty:
+        return pd.DataFrame(columns=columns)
+
+    artist_months["month"] = pd.to_datetime(artist_months["month"])
+    ranked = artist_months.copy()
+    ranked["rank"] = ranked.groupby("month")["play_count"].rank(
+        method="first", ascending=False
+    )
+    sprint_artists = set(ranked.loc[ranked["rank"] <= top_n, "artist"])
+
+    subset = (
+        artist_months[artist_months["artist"].isin(sprint_artists)]
+        .sort_values(["artist", "month"])
+        .copy()
+    )
+    subset["cumulative_plays"] = subset.groupby("artist")["play_count"].cumsum()
+    return subset[columns].reset_index(drop=True)
 
 
 def binged_then_abandoned(

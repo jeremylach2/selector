@@ -1,0 +1,13 @@
+# Deps for the Vercel deployment of the MCP server (api/index.py), kept
+# deliberately separate from pyproject.toml's full dependency list — the
+# audio/ML stack (librosa, torch, scikit-learn, matplotlib, ...) is only
+# needed for local ingestion/tagging work, never by the warehouse-query
+# tools this deployment exposes. Keeping it out saves a lot of cold-start
+# time and bundle size.
+mcp>=2.2.0
+duckdb>=1.1
+pandas>=2.2
+pyarrow>=17.0
+httpx>=0.27
+python-dotenv>=1.0
+pydantic>=2.9
