@@ -31,6 +31,10 @@ dist/
 build/
 .uv/
 
+# Third-party binaries (llama.cpp prebuilt release + sparse source
+# checkout for GGUF conversion — see docs/GPU_INFERENCE.md to reproduce)
+tools/
+
 # Node / web
 node_modules/
 .next/

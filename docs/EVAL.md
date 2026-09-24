@@ -278,6 +278,79 @@ audio question at all. It never got a task-level eval; its eval_loss values
 aren't comparable to the table above (different label set and split). The
 data fix and its reasoning are in `docs/DATA_FIX_PLAN.md`.
 
+## GPU inference, latency, and cost
+
+CPU generation is far too slow to tag all 19,386 warehouse tracks (a
+day-plus of wall time at the measured CPU rate - see below), so `infer.py`'s
+real inference path runs through llama.cpp's Vulkan backend instead of the
+CPU path this doc's main table used. The full setup, the parity check that
+justified trusting it, and the reproduction commands are in
+`docs/GPU_INFERENCE.md`; summarised here:
+
+**Single-request median generation latency** (`n_predict=80`, greedy):
+
+| Path | Median |
+|---|---|
+| CPU (Ryzen 5 3600), arm C | 13.34s |
+| GPU (RX 5600 XT, Vulkan), arm A | 2.891s |
+| GPU (RX 5600 XT, Vulkan), arm C | 2.907s |
+
+About 4.6x faster per request, and a further ~2.5x on top of that from
+running 4 requests concurrently against each arm's server (1.14s/example
+wall for arm A, 1.29s/example for arm C, measured across the full 487-track
+test split during the parity check below).
+
+**JSON-validity rate** is the complement of `parse_fail` in the main table
+above: 99.4% for arm A, 99.2% for arm B, 99.2% for arm C on CPU.
+
+**Cost per thousand tracks vs the teacher.** The teacher
+(`claude-sonnet-5`) costs $5.03 per thousand tracks (`docs/TEACHER.md`).
+The fine-tuned student has no equivalent per-call cost once trained - it
+runs locally with no metered API in the loop, so the honest framing is that
+the teacher's cost was a one-time price for ~3,500 labelled training
+examples, and every track inferred afterwards (the other ~15,900, or any
+future one) is free at the margin. See `docs/GPU_INFERENCE.md` for the
+fuller version of this argument.
+
+**Parity check.** Before trusting the GPU path, the same 487-track test
+split was re-scored through both arm servers and compared against the CPU
+rows above. Every metric landed within noise (≤0.001 MAE, ≤0.8 percentage
+points on match rates) - full table in `docs/GPU_INFERENCE.md`.
+
+## Llama-3.2-1B: dropped
+
+The comparison model was never trained. It needed the same CPU-only LoRA
+pipeline as Qwen3-0.6B (training has no GPU path here - llama.cpp is
+inference-only, see `docs/GPU_INFERENCE.md`), which would mean a second
+multi-hour-per-arm CPU fine-tune run for a model roughly 1.7x the parameter
+count, on top of the three arms already trained. Decided with the project
+owner (2026-09-23) to drop it rather than spend that time: Qwen3-0.6B
+already answers this component's headline question (does fine-tuning work,
+and does audio help), a second base model's main plausible contribution -
+showing whether a bigger sub-1B model closes more of the floor-to-ceiling
+gap - is a real question but a secondary one, and the eval table's honesty
+doesn't depend on having it. Left here rather than silently dropped, per
+this doc's own standard for reporting what wasn't run and why.
+
+## The full-warehouse run
+
+`infer.py`'s real inference path (item 6) has run: `data/track_features.parquet`
+holds a real fine-tuned prediction for every one of the 19,386 tracks in
+the warehouse, replacing the earlier dry-run baseline.
+
+| | n | % |
+|---|---|---|
+| Arm A (no audio match) | 16,188 | 83.5% |
+| Arm C (matched audio) | 3,198 | 16.5% |
+| `label_source: finetuned_gpu` | 19,130 | 98.7% |
+| `label_source: parse_fallback` | 256 | 1.3% |
+
+The parse-fallback rate (1.5% for arm A, 0.3% for arm C) is in the same
+range as the CPU/GPU eval rows above, as expected since it's the same
+models generating. Every row carries `arm` and `label_source`, so a
+downstream consumer (Step 12's fly brain, the DJ agent) can tell a
+fine-tuned prediction from a fallback rather than treating them the same.
+
 ## Still open
 
 - **Optional overnight run: fine-tuned per-example predictions.** Not run.
@@ -290,9 +363,6 @@ data fix and its reasoning are in `docs/DATA_FIX_PLAN.md`.
   - Spearman values for the fine-tuned rows;
   - a comparison of model error on the supplemental tail tracks vs the top
     3,000 (71 of the test tracks come from the tail sample).
-- **`infer.py`'s real inference path.** Only `--dry-run` (train-mean
-  baseline for every warehouse track) is implemented. Wiring arm C's adapter
-  into it is the Step 12 handoff.
 
 ## Reproducing
 

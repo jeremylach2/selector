@@ -17,7 +17,7 @@ import random
 from pathlib import Path
 from typing import Literal
 
-from selector.tagger.schema import LabelRecord
+from selector.tagger.schema import LabelRecord, TeacherInput
 
 Arm = Literal["A", "B", "C"]
 
@@ -63,9 +63,12 @@ def split_by_artist(
     return train, val, test
 
 
-def build_prompt(record: LabelRecord, arm: Arm) -> str:
-    """The student's input text for one track under one arm."""
-    item = record.input
+def build_prompt_from_input(item: TeacherInput, arm: Arm) -> str:
+    """The student's input text for one track under one arm. Takes a bare
+    `TeacherInput` rather than a `LabelRecord` so callers with no ground
+    truth - `infer.py` tagging the full warehouse, which has no label for
+    most tracks - can build the same prompt the fine-tuned adapters were
+    trained on without fabricating a `LabelRecord`."""
     lines = [f"Track: {item.track_name!r} by {item.artist_name!r}"]
     if item.album_name:
         lines.append(f"Album: {item.album_name!r}")
@@ -79,6 +82,11 @@ def build_prompt(record: LabelRecord, arm: Arm) -> str:
         lines.append(f"Lyrics: {item.lyrics}" if item.lyrics else "Lyrics: not available")
 
     return "\n".join(lines)
+
+
+def build_prompt(record: LabelRecord, arm: Arm) -> str:
+    """The student's input text for one track under one arm."""
+    return build_prompt_from_input(record.input, arm)
 
 
 def build_completion(record: LabelRecord) -> str:

@@ -53,3 +53,9 @@ build-backend = "uv_build"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.pytest.ini_options]
+# Without this, a bare `pytest` also collects from tools/ (the gitignored
+# llama.cpp checkout - see docs/GPU_INFERENCE.md), which ships its own
+# differently-configured test suite.
+testpaths = ["tests"]
