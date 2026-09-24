@@ -86,7 +86,15 @@ def _predict_all(audio, graphs: dict[str, tuple[object, int]]) -> dict[str, floa
 
 
 def extract_features(path: str, graphs: dict[str, tuple[object, int]]) -> dict[str, float] | None:
-    """Compute one row of Essentia model predictions for a single clip."""
+    """Compute one row of Essentia model predictions for a single clip.
+
+    Returns None on any decode or inference failure so one bad clip doesn't
+    kill the whole batch — this run has no checkpointing, unlike
+    ``resolve.py``, so an unhandled exception here loses everything, not
+    just the one clip (see ``_predict_all``, which can raise on a
+    degenerate/very-short clip where a model returns a plain list instead
+    of the expected ndarray).
+    """
     import essentia.standard as es
 
     try:
@@ -98,7 +106,10 @@ def extract_features(path: str, graphs: dict[str, tuple[object, int]]) -> dict[s
     if audio.size == 0:
         return None
 
-    return _predict_all(audio, graphs)
+    try:
+        return _predict_all(audio, graphs)
+    except Exception:  # noqa: BLE001 - any inference failure means "skip this clip", not "crash the run"
+        return None
 
 
 def extract_all(matches: pd.DataFrame, model_dir: Path = DEFAULT_MODEL_DIR) -> pd.DataFrame:

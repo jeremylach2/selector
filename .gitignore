@@ -14,6 +14,9 @@ data/labels_gold.jsonl
 data/splits/
 data/runs/
 data/dj_runs/
+# Everything else under data/ is derived from personal data too (labels with
+# lyrics, logs, model checkpoints, reports). Nothing in data/ is tracked.
+data/
 .env
 
 # Python
@@ -44,3 +47,5 @@ PROMPT-PACK.md
 Selector — Project Plan.md
 
 SKILL.md
+.vercel
+.env*

@@ -40,6 +40,19 @@ def _format_example(tokenizer, example: dict, max_length: int) -> dict:
     return {"input_ids": input_ids, "labels": labels, "attention_mask": [1] * len(input_ids)}
 
 
+def _drop_fully_masked(examples: list[dict], split_name: str) -> list[dict]:
+    """Examples whose prompt alone reaches max_length truncate the
+    completion entirely, leaving every label -100. Such an example
+    contributes no training signal, and in eval it turns the mean loss for
+    the whole split into NaN (one all-masked sequence has no valid target
+    token to average over), so it's dropped rather than fed to the model."""
+    kept = [ex for ex in examples if any(label != -100 for label in ex["labels"])]
+    dropped = len(examples) - len(kept)
+    if dropped:
+        print(f"{split_name}: dropping {dropped}/{len(examples)} examples with a fully-truncated completion")
+    return kept
+
+
 def train(
     model_name: str,
     train_path: Path,
@@ -49,6 +62,7 @@ def train(
     learning_rate: float = 1e-4,
     lora_r: int = 8,
     max_length: int = 768,
+    resume_from_checkpoint: Path | None = None,
 ) -> None:
     # Imported lazily: torch/transformers/peft are heavy dependencies only
     # needed for this one command, not for the rest of the package.
@@ -66,8 +80,12 @@ def train(
     model = get_peft_model(model, lora_config)
     model.print_trainable_parameters()
 
-    train_examples = [_format_example(tokenizer, ex, max_length) for ex in _read_jsonl(train_path)]
-    val_examples = [_format_example(tokenizer, ex, max_length) for ex in _read_jsonl(val_path)]
+    train_examples = _drop_fully_masked(
+        [_format_example(tokenizer, ex, max_length) for ex in _read_jsonl(train_path)], "train"
+    )
+    val_examples = _drop_fully_masked(
+        [_format_example(tokenizer, ex, max_length) for ex in _read_jsonl(val_path)], "val"
+    )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     args = TrainingArguments(
@@ -104,7 +122,7 @@ def train(
     )
 
     start = time.monotonic()
-    trainer.train()
+    trainer.train(resume_from_checkpoint=str(resume_from_checkpoint) if resume_from_checkpoint else None)
     elapsed = time.monotonic() - start
 
     model.save_pretrained(output_dir / "adapter")
@@ -120,6 +138,7 @@ def train(
                 "n_train": len(train_examples),
                 "n_val": len(val_examples),
                 "elapsed_seconds": elapsed,
+                "resumed_from": str(resume_from_checkpoint) if resume_from_checkpoint else None,
             },
             f,
             indent=2,
@@ -136,6 +155,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--output-dir", type=Path, default=Path("data/runs/latest"))
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--learning-rate", type=float, default=1e-4)
+    parser.add_argument(
+        "--resume-from-checkpoint",
+        type=Path,
+        default=None,
+        help="path to a checkpoint dir under --output-dir (e.g. data/runs/C/checkpoint-4070) to continue from",
+    )
     args = parser.parse_args(argv)
 
     model_name = args.model_name or DEFAULT_MODELS[args.model]
@@ -146,6 +171,7 @@ def main(argv: list[str] | None = None) -> None:
         output_dir=args.output_dir,
         epochs=args.epochs,
         learning_rate=args.learning_rate,
+        resume_from_checkpoint=args.resume_from_checkpoint,
     )
 
 

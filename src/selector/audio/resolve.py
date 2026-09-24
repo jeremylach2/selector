@@ -211,8 +211,13 @@ def _append_checkpoint(rows: list[MatchResult]) -> None:
             f.write(json.dumps(asdict(row)) + "\n")
 
 
-def _top_tracks(limit: int, db_path: Path) -> pd.DataFrame:
+def _top_tracks(limit: int, db_path: Path, track_ids: list[str] | None = None) -> pd.DataFrame:
     with _connect(db_path) as con:
+        if track_ids is not None:
+            return con.execute(
+                "SELECT track_id, name, artist, play_count FROM tracks WHERE track_id = ANY(?)",
+                [track_ids],
+            ).df()
         return con.execute(
             "SELECT track_id, name, artist, play_count FROM tracks ORDER BY play_count DESC LIMIT ?",
             [limit],
@@ -223,13 +228,15 @@ def resolve_tracks(
     limit: int = 3000,
     threshold: float = DEFAULT_MATCH_THRESHOLD,
     db_path: Path = DEFAULT_DB_PATH,
+    track_ids: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Resolve the top `limit` tracks by play count to downloaded previews.
+    """Resolve the top `limit` tracks by play count to downloaded previews,
+    or an explicit `track_ids` list instead of the top-N query when given.
 
     Idempotent: tracks already present in the checkpoint file are skipped on
     re-run, and the audio directory is only ever added to, never re-downloaded.
     """
-    tracks = _top_tracks(limit, db_path)
+    tracks = _top_tracks(limit, db_path, track_ids)
     done = _load_checkpoint()
 
     to_process = tracks[~tracks["track_id"].isin(done.keys())]
@@ -319,16 +326,32 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--threshold", type=float, default=DEFAULT_MATCH_THRESHOLD)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
     parser.add_argument("--db-path", type=Path, default=DEFAULT_DB_PATH)
+    parser.add_argument(
+        "--track-ids-file",
+        type=Path,
+        default=None,
+        help="newline-delimited file of track_ids to resolve instead of the top-N-by-play-count query",
+    )
     args = parser.parse_args(argv)
 
+    track_ids = None
+    if args.track_ids_file is not None:
+        track_ids = [
+            line.strip() for line in args.track_ids_file.read_text(encoding="utf-8").splitlines() if line.strip()
+        ]
+
     AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-    matches = resolve_tracks(limit=args.limit, threshold=args.threshold, db_path=args.db_path)
+    matches = resolve_tracks(limit=args.limit, threshold=args.threshold, db_path=args.db_path, track_ids=track_ids)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     matches.to_parquet(args.output, index=False)
 
-    tracks = _top_tracks(args.limit, args.db_path)
+    tracks = _top_tracks(args.limit, args.db_path, track_ids)
+    # `matches` is the full accumulated checkpoint (all tracks ever resolved);
+    # when this run targeted an explicit id subset, scope the printed report
+    # to just that subset so the numbers reflect this run, not the whole file.
+    report_matches = matches[matches["track_id"].isin(tracks["track_id"])] if track_ids is not None else matches
     print()
-    print(match_rate_report(matches, tracks))
+    print(match_rate_report(report_matches, tracks))
 
 
 if __name__ == "__main__":

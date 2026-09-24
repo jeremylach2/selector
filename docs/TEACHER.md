@@ -1,108 +1,115 @@
-# Teacher labelling — full scale run complete
+# Teacher labelling
 
 Step 10 produces the subjective half of the vibe tagger's schema (valence,
-mood tags, era, lyrical theme, intensity) for the ~3,000-track label set
-used to fine-tune the student model in Step 11. `selector/tagger/label.py`
-calls `claude-haiku-4-5` through the Anthropic API with structured output,
-and requires `ANTHROPIC_API_KEY` and `ANTHROPIC_WORKSPACE_ID` in `.env`.
+mood tags, era, lyrical theme, intensity) for the label set used to
+fine-tune the student model in Step 11. `selector/tagger/label.py` calls
+the teacher through the Anthropic API with strict tool use against the
+`PredictedLabels` schema, and requires `ANTHROPIC_API_KEY` (plus
+`ANTHROPIC_WORKSPACE_ID` if the key isn't workspace-scoped) in `.env`.
 
-## Full-scale run (2026-09-18)
+## Current label set (2026-09-19)
 
-**Status: complete.** 2,999 of 3,000 tracks successfully labelled on the
-first pass (99.97% success rate). One track (`3xKsf9qdS1CyvXSMEid6g8`)
-persistently returned `intensity: 6` instead of a 0–1 value — a
-systematic error in that specific track's input or a model quirk, not a
-schema bug. Real cost: **4.2M input + 376K output tokens ≈ $6.32** using
-Haiku (cheaper than the plan's Sonnet 5 estimate).
+**Teacher: `claude-sonnet-5`** (`label.py`'s `DEFAULT_MODEL`). Every record
+in `data/labels.jsonl` has `teacher_model: "claude-sonnet-5"` and
+`prompt_variant: "default"`.
 
-Schema validation initially failed on ~3% of tracks due to `strict: true`
-tool use stripping numeric bounds from the JSON schema — the API enforces
-enum/type structurally but can't constrain numeric ranges with strict mode
-active. Fixed by adding explicit guardrails to the system prompt:
-`mood_tags` between 1–3 items, `lyrical_theme` max 60 chars, `valence` and
-`intensity` each 0.0–1.0 float. All retries succeeded after prompt fix.
+**Scope:** 3,500 tracks: the top 3,000 by play count plus a 500-track
+stratified sample from the tail of tracks played only once or twice (250
+always skipped, 250 never skipped). See `docs/DATA_FIX_PLAN.md` Step 4 and
+`docs/EVAL.md` ("The supplemental tail sample") for why and what it
+changed. Built by `scripts/label_full_with_supplemental.py`, because
+`label.py`'s CLI only takes `--limit N`.
 
-`teacher_model` in every record is set to `"claude-haiku-4-5"`, distinct
-from any future runs that might use a different model or approach.
+**Result:** 3,492 of 3,500 labelled (99.8%). The 8 failures are responses
+that failed schema validation on both attempts, logged by track id in
+`data/step5_label.log` and not investigated further.
 
-## Pilot run (interactive, for reference)
-
-An earlier pilot labelled 30 tracks interactively inside Claude Code (no
-API billing) and produced a 10-track gold set double-labelled under two
-prompt framings to measure self-consistency. That pilot validated the
-schema and pipeline before committing to full-scale runs. Records from
-that session are marked `teacher_model: "claude-sonnet-5-interactive"` to
-remain auditable and distinguishable from API-driven labels.
-
-## Scope (full scale)
-
-All 3,000 unique tracks from the Spotify Extended Streaming History export
-(46,202 plays across 19,386 unique tracks, but labelling focused on the
-top 3,000 by play frequency for cost efficiency and coverage of listening
-patterns). Output: `data/labels.jsonl`, one `LabelRecord` per track.
+**Inputs the teacher saw:** track, album, artist, lyrics from lrclib where
+available (see `docs/LYRICS.md`), and measured audio features where a
+preview clip was matched. 91.4% of records (3,190) have measured features.
+Before the data fix, only 6.6% did.
 
 ## Cost
 
-Full-scale run (3,000 tracks, Haiku): **4,211,537 input + 375,873 output
-tokens ≈ $6.32 USD** (at Haiku's $1/$5 per MTok rates). Includes all
-retries and validation failures on the first pass. Per-track cost: ~$0.002
-input + ~$0.0001 output.
+Exact totals from `data/step5_label.log`:
 
-For reference, the original plan estimated Sonnet 5 would cost ~$9–15 for
-the same job. Haiku achieves acceptable quality at a 40% discount with
-longer latency (sequential API calls, not batched).
+| | Tokens | Rate (Sonnet 5) | Cost |
+|---|---|---|---|
+| Input | 6,006,012 | $2 / MTok | $12.01 |
+| Output | 557,909 | $10 / MTok | $5.58 |
+| **Total** | | | **$17.59** |
 
-## Self-consistency ceiling (pilot gold set, n=10)
+That's **$5.03 per thousand tracks attempted**, or about 1,716 input and
+159 output tokens per track. Retries on validation failures are included.
+Calls were sequential, not batched. The Message Batches API would halve
+this.
 
-From the earlier interactive pilot: 10 tracks labelled twice under two
-framings (`label.py`'s `default` and `alt_phrasing` prompt variants):
+## Self-consistency ceiling (gold set, n=199)
+
+Run 2026-09-23 with `scripts/gold_set.py`. A seeded random 200 tracks
+(seed 0) from `data/labels.jsonl` were relabelled by `claude-sonnet-5` with
+`label.py`'s `alt_phrasing` prompt variant, which asks the teacher to
+describe how the song feels and what it's about before labelling. The
+original `default` labels are the first pass, so the only thing that
+changes between passes is the prompt wording. One relabel failed schema
+validation, leaving 199 pairs. Second-pass labels are in
+`data/labels_gold_200.jsonl`, the log in `data/step10_gold.log`.
+
+Cost: 341,868 input + 32,167 output tokens, **$1.01**.
 
 | Metric | Value |
 |---|---|
-| Valence MAE | 0.045 |
-| Intensity MAE | 0.045 |
-| Era exact-match rate | 100.0% |
-| Mood-tags exact-set-match rate | 30.0% |
-| Mood-tags mean Jaccard similarity | 0.533 |
+| Valence MAE | 0.017 |
+| Intensity MAE | 0.022 |
+| Era exact-match rate | 90.5% |
+| Mood-tags exact-set-match rate | 64.8% |
+| Mood-tags mean Jaccard similarity | 0.837 |
 
-**Read this honestly, not optimistically.** The numeric fields (valence,
-intensity) and the categorical `era` field are highly self-consistent —
-small MAE, perfect era agreement. `mood_tags` is not: only 3 of 10 tracks
-got the *exact same two-tag set* on both passes, though the tags that
-differed were usually adjacent in meaning (e.g. `somber` vs. `anxious` for
-the same brooding track), not contradictory. **This sets a real ceiling for
-Step 11's eval table** — a fine-tuned student cannot be expected to beat
-~30% exact-set-match on `mood_tags` just because it trained longer; the
-task itself has that much genuine subjective slack at only two tags per
-track. If Step 11's numbers land far below this ceiling on the numeric
-fields but close to it on `mood_tags`, that's the schema being harder than
-the model, not the model being bad.
+The teacher barely moves on valence and intensity when the prompt is
+reworded. Era changes on about 1 track in 10. mood_tags is the most
+subjective field, but the exact tag set still matches two times in three,
+and the average overlap is high. This is the ceiling row in
+`docs/EVAL.md`'s table and the `TEACHER_SELF_CONSISTENCY` constant in
+`eval.py`.
 
-At only n=10, none of these numbers should be treated as precise — they're
-a first read, not a final ceiling. These remain the best-estimate ceilings
-for Step 11's eval table until a full-scale gold set (200+ re-labelled
-tracks at current scale) is double-validated.
+It measures sensitivity to prompt wording with the same inputs, not
+agreement between independent annotators, so it's a ceiling on how
+consistently this teacher labels, not on how "correct" the labels are.
 
-## Output files
+**The earlier 10-track estimate** (pilot, done interactively, records in
+`data/labels_gold.jsonl`) put valence and intensity MAE at 0.045, era at
+100% and mood_tags exact match at 30%. The 200-track run replaces it. The
+biggest change is mood_tags: 3 of 10 was a small-sample low.
 
-`data/labels.jsonl` (gitignored) contains 2,999 newline-delimited
-`LabelRecord` JSON objects — see `selector/tagger/schema.py` for the
-schema. One record per track (including the one persistent failure marked
-as `teacher_model: "claude-haiku-4-5"`). The earlier interactive pilot's
-records (30 tracks, 10 double-labelled) are preserved in git history but
-not present in the current run.
+## History: the first full run (2026-09-18, superseded)
+
+The first full-scale run used `claude-haiku-4-5` on the top 3,000 tracks
+only: 2,999 labelled, 4,211,537 input + 375,873 output tokens, about $6.32.
+It was superseded because only 198 of those tracks had measured audio
+features at the time (the audio pipeline had only run on a 200-track
+pilot). The file is backed up as `data/labels_pilot_audio_v1.jsonl`.
+
+Two things learned in that run still apply:
+
+- Strict tool use enforces types and enums but rejects numeric range and
+  length keywords, so `label.py` strips them from the tool schema and states
+  the limits in the system prompt instead (1–3 mood tags, `lyrical_theme`
+  ≤ 60 chars, valence and intensity as 0.0–1.0 floats). Responses are
+  re-validated against the pydantic model afterwards.
+- One track persistently returned `intensity: 6`, a 1–10 scale instead of
+  0–1. The system prompt now says explicitly never to use a 1–10 scale.
 
 ## Re-running or extending the set
 
 ```bash
-uv run python -m selector.tagger.label --limit 3000 --model claude-haiku-4-5
+# top-N by play count
+uv run python -m selector.tagger.label --limit 3000
+# the current 3,500-track set (top 3,000 + supplemental sample)
+uv run python scripts/label_full_with_supplemental.py
 ```
 
-Requires `ANTHROPIC_API_KEY` and `ANTHROPIC_WORKSPACE_ID` in `.env` (if
-your key isn't workspace-scoped). To use Sonnet 5 instead: omit
-`--model` (defaults to `claude-sonnet-5`).
-
-Resumable — `_load_cached` skips any `track_id` already labelled, so a
-kill mid-run only costs the batch in flight. Batch progress and token
-totals print every 20 tracks. To extend past 3,000: increase `--limit`
-and re-run.
+Resumable: `_load_cached` skips any `track_id` already in the output file,
+so a kill mid-run only loses the call in flight. That also means a rerun
+after the inputs change (new audio features, new lyrics) must start from a
+fresh output file, or stale labels are silently kept. Progress and running
+token totals print every 20 tracks.
