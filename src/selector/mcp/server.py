@@ -589,6 +589,80 @@ def fly_score(track: str) -> str:
     return f"**{name}** by {artist}: fly valence = {score:.3f} ({verdict})."
 
 
+# -- DJ agent -------------------------------------------------------------
+#
+# The crate (measured audio + predicted labels + fly tags + a freshly
+# trained production mushroom body) takes a few seconds to build, so it's
+# built once per server process and reused across `dj_set` calls.
+
+_dj_crate = None
+
+
+@server.tool()
+def dj_set(
+    theme: str | None = None,
+    minutes: int = 45,
+    dry_run: bool = True,
+    familiar_ratio: float = 0.6,
+) -> str:
+    """Plan a themed DJ set from this person's own library and, only if
+    `dry_run` is False, create it as a private Spotify playlist.
+
+    Runs five explicit stages: Brief (reads recent plays and the clock,
+    picks a theme), Arc (an opener/build/peak/comedown energy curve over
+    `minutes`, a hard constraint on *measured* audio energy), Select (fills
+    the arc using fly-brain similarity for coherence and mushroom-body
+    valence for taste, max two tracks per artist), Critique (rejects sets
+    with off-arc tracks, jarring tempo/energy transitions, or no real peak,
+    and sends them back to Select once), and Commit (liner notes citing
+    measured tempo and energy per transition; the playlist write).
+
+    `theme` is optional: omit it to let the brief choose from the time of
+    day and recent listening, or pass a named theme ("night drive", "peak
+    time", "slow sunrise", "focus drift", "golden hour", "after hours",
+    "adrenaline") or mood words ("sad rainy day"). `familiar_ratio` is the
+    share of tracks from current rotation (played in the last 90 days)
+    versus rediscoveries from further back.
+
+    `dry_run` defaults to True and never touches the account. Only pass
+    `dry_run=False` once the user has explicitly asked for the playlist to
+    be created; a set that fails critique twice is never written.
+    """
+    from selector.dj.agent import render, run_dj
+    from selector.dj.pool import build_crate
+
+    global _dj_crate
+    db_path = _db_path()
+    if not db_path.exists():
+        return _missing_db_message(db_path)
+    if not fly_pipeline.FLY_TAGS_PATH.exists():
+        return _missing_fly_tags_message(fly_pipeline.FLY_TAGS_PATH)
+
+    client_id = os.environ.get("SPOTIFY_CLIENT_ID")
+    global _spotify_client
+    if client_id and (_spotify_client is None or _spotify_client.client_id != client_id):
+        _spotify_client = SpotifyClient(client_id=client_id)
+    client = _spotify_client if client_id else None
+
+    try:
+        if _dj_crate is None:
+            _dj_crate = build_crate(db_path=db_path)
+        run = run_dj(
+            _dj_crate,
+            theme=theme,
+            minutes=minutes,
+            dry_run=dry_run,
+            familiar_ratio=familiar_ratio,
+            client=client,
+            db_path=db_path,
+        )
+    except ValueError as exc:
+        return str(exc)
+    except Exception as exc:  # noqa: BLE001 - surfaced to the model as text, not a crash
+        return f"DJ run failed: {exc}"
+    return render(run)
+
+
 def main() -> None:
     server.run(transport='stdio')
 

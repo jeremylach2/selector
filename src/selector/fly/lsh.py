@@ -19,7 +19,27 @@ from __future__ import annotations
 import numpy as np
 from scipy import sparse
 
-__all__ = ["FlyHash", "hamming_top_k"]
+__all__ = ["FlyHash", "hamming_distances", "hamming_top_k"]
+
+
+def hamming_distances(
+    query_tag: sparse.spmatrix | np.ndarray,
+    corpus: sparse.spmatrix,
+) -> np.ndarray:
+    """Hamming distance from `query_tag` to every row of `corpus`.
+
+    For two binary vectors, Hamming distance = |a| + |b| - 2*|a & b|, so this
+    is a single sparse matrix-vector product rather than any dense arrays.
+    """
+    corpus = sparse.csr_matrix(corpus).astype(np.float64)
+
+    query = sparse.csr_matrix(query_tag).astype(np.float64)
+    if query.shape[0] != 1:
+        query = query.reshape(1, -1)
+
+    intersection = np.asarray(corpus.dot(query.T).todense()).ravel()
+    corpus_popcount = np.asarray(corpus.sum(axis=1)).ravel()
+    return corpus_popcount + query.sum() - 2 * intersection
 
 
 def hamming_top_k(
@@ -35,22 +55,10 @@ def hamming_top_k(
     fitted `FlyHash` instance around just to call this. `FlyHash.hamming_neighbours`
     below is a thin wrapper kept for backward compatibility.
 
-    For two binary vectors, Hamming distance = |a| + |b| - 2*|a & b|, so this
-    is computed with a single sparse matrix-vector product rather than
-    materialising any dense arrays. Returns `(indices, distances)`, both
-    length `min(k, n_candidates)`, sorted nearest first.
+    Returns `(indices, distances)`, both length `min(k, n_candidates)`,
+    sorted nearest first.
     """
-    corpus = sparse.csr_matrix(corpus).astype(np.float64)
-
-    query = sparse.csr_matrix(query_tag).astype(np.float64)
-    if query.shape[0] != 1:
-        query = query.reshape(1, -1)
-
-    intersection = np.asarray(corpus.dot(query.T).todense()).ravel()
-    corpus_popcount = np.asarray(corpus.sum(axis=1)).ravel()
-    query_popcount = query.sum()
-
-    distances = corpus_popcount + query_popcount - 2 * intersection
+    distances = hamming_distances(query_tag, corpus)
 
     k = min(k, distances.shape[0])
     nearest = np.argpartition(distances, k - 1)[:k]

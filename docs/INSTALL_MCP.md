@@ -101,6 +101,13 @@ similarity — and `fly_score(track)` — the mushroom body's predicted
 approach/avoid valence for a track, trained on this person's actual
 skip/play-out history. Both accept a `track_id` or a name substring.
 
+**DJ agent** (needs the fly tags plus `data/audio_features.parquet`):
+`dj_set(theme=None, minutes=45, dry_run=True, familiar_ratio=0.6)` plans a
+themed set through Brief → Arc → Select → Critique → Commit and returns the
+critique chain plus liner notes. It is a dry run unless `dry_run=False` is
+passed explicitly, and it never writes a set that failed critique. See
+`docs/DJ_AGENT.md`.
+
 Every tool returns a markdown table (or a short status message for the
 write-actions), capped at 40 rows with a "… N more rows" note when
 truncated.
