@@ -21,6 +21,8 @@ import pandas as pd
 from dotenv import load_dotenv
 from mcp.server.mcpserver import MCPServer
 
+from selector.fly import pipeline as fly_pipeline
+from selector.fly.lsh import hamming_top_k
 from selector.spotify.auth import SpotifyAuthError
 from selector.spotify.client import SpotifyAPIError, SpotifyClient
 from selector.spotify.reconcile import reconcile_library as _reconcile_library
@@ -448,6 +450,143 @@ def reconcile_library() -> str:
         return "\n\n".join(f"**{title}**\n\n{_df_to_markdown(df)}" for title, df in sections)
 
     return _run_spotify(_call)
+
+
+# -- fly brain tools ------------------------------------------------------
+#
+# Both tools below read `data/fly_tags.npz`, the fingerprints
+# `selector.fly.pipeline` (Step 12) computes over the fine-tuned vibe
+# tagger's output plus measured audio features, wired through the real
+# FlyWire connectome. Loaded and cached lazily on first use, since fitting
+# nothing here is free but training the production mushroom body does a
+# pass over the full play history.
+
+_fly_track_ids: list[str] | None = None
+_fly_tags = None
+_fly_track_index: dict[str, int] | None = None
+_fly_mbon = None
+
+
+def _missing_fly_tags_message(path: Path) -> str:
+    return (
+        f"No fly-brain fingerprints found at `{path}`. Run the Step 12 pipeline first:\n\n"
+        "```\n"
+        "uv run python -m selector.fly.pipeline\n"
+        "```\n\n"
+        "(needs `data/track_features.parquet` from Step 11 first) then retry this call."
+    )
+
+
+def _load_fly_state() -> tuple[list[str], Any, dict[str, int]] | None:
+    """Returns `(track_ids, tags, track_id -> row index)`, loading and
+    caching from disk once. `None` if the fingerprints haven't been built
+    yet."""
+    global _fly_track_ids, _fly_tags, _fly_track_index
+    if _fly_track_ids is None:
+        path = fly_pipeline.FLY_TAGS_PATH
+        if not path.exists():
+            return None
+        _fly_track_ids, _fly_tags = fly_pipeline.load_tags(path)
+        _fly_track_index = {tid: i for i, tid in enumerate(_fly_track_ids)}
+    return _fly_track_ids, _fly_tags, _fly_track_index
+
+
+def _get_production_mbon(track_ids: list[str], tags) -> Any:
+    """Trains once, on the full chronological play history (see
+    `selector.fly.pipeline.train_production_mbon`), and caches — this is a
+    single pass over `data/plays.parquet`, not per-call work."""
+    global _fly_mbon
+    if _fly_mbon is None:
+        _fly_mbon = fly_pipeline.train_production_mbon(track_ids, tags)
+    return _fly_mbon
+
+
+def _resolve_track(track: str) -> tuple[str, str, str] | None:
+    """Resolve a `track_id` or name substring to `(track_id, name, artist)`
+    via the warehouse, the same resolution `track_detail` uses. `None` if
+    nothing matches."""
+    db_path = _db_path()
+    if not db_path.exists():
+        return None
+    match = queries.track_detail(track, db_path=db_path)
+    if match.empty:
+        return None
+    row = match.iloc[0]
+    return row["track_id"], row["name"], row["artist"]
+
+
+@server.tool()
+def more_like_this(track: str, k: int = 10) -> str:
+    """Find tracks whose fly-brain fingerprint is nearest by Hamming
+    distance to `track`'s — the fly-brain equivalent of Spotify's dead
+    "related tracks" endpoint. `track` accepts an exact `track_id` (from
+    `search_library`) or a name substring, in which case the highest-play-count
+    match is used. This is content/vibe similarity (shared Kenyon-cell
+    activity from the vibe tagger's features), not taste — use `fly_score`
+    for whether this person is predicted to actually like a track.
+    """
+    state = _load_fly_state()
+    if state is None:
+        return _missing_fly_tags_message(fly_pipeline.FLY_TAGS_PATH)
+    track_ids, tags, track_index = state
+
+    resolved = _resolve_track(track)
+    if resolved is None:
+        return f'No track in the warehouse matches "{track}".'
+    track_id, name, artist = resolved
+
+    idx = track_index.get(track_id)
+    if idx is None:
+        return f'"{name}" by {artist} has no fly-brain fingerprint yet (not in `track_features.parquet`).'
+
+    neighbour_idx, distances = hamming_top_k(tags[idx], tags, k=k + 1)
+
+    rows = []
+    for i, dist in zip(neighbour_idx, distances):
+        if track_ids[i] == track_id:
+            continue
+        rows.append({"track_id": track_ids[i], "hamming_distance": int(dist)})
+    rows = rows[:k]
+
+    labels = queries.tracks_by_ids([r["track_id"] for r in rows], db_path=_db_path())
+    labels = labels.set_index("track_id")
+    for row in rows:
+        info = labels.loc[row["track_id"]] if row["track_id"] in labels.index else None
+        row["name"] = info["name"] if info is not None else "(unknown)"
+        row["artist"] = info["artist"] if info is not None else "(unknown)"
+
+    df = pd.DataFrame(rows)[["name", "artist", "hamming_distance"]] if rows else pd.DataFrame()
+    header = f"Nearest to **{name}** by {artist}:\n\n"
+    return header + _df_to_markdown(df)
+
+
+@server.tool()
+def fly_score(track: str) -> str:
+    """Get the fly brain's predicted taste score for `track`: net approach
+    minus avoid drive from the mushroom body's KC->MBON synapses, trained
+    chronologically on this person's actual skip/play-out history (see
+    `selector.fly.mbon`). Positive means the fly predicts this person
+    approaches this track; negative means it predicts avoidance. `track`
+    accepts an exact `track_id` or a name substring.
+    """
+    state = _load_fly_state()
+    if state is None:
+        return _missing_fly_tags_message(fly_pipeline.FLY_TAGS_PATH)
+    track_ids, tags, track_index = state
+
+    resolved = _resolve_track(track)
+    if resolved is None:
+        return f'No track in the warehouse matches "{track}".'
+    track_id, name, artist = resolved
+
+    idx = track_index.get(track_id)
+    if idx is None:
+        return f'"{name}" by {artist} has no fly-brain fingerprint yet (not in `track_features.parquet`).'
+
+    mbon = _get_production_mbon(track_ids, tags)
+    score = mbon.valence(tags[idx])
+    verdict = "approach" if score > 0 else "avoid" if score < 0 else "neutral"
+    return f"**{name}** by {artist}: fly valence = {score:.3f} ({verdict})."
 
 
 def main() -> None:

@@ -130,6 +130,26 @@ def test_track_detail_no_match():
     assert df.empty
 
 
+def test_tracks_by_ids():
+    some_tracks = queries.top_tracks(limit=3)
+    assert not some_tracks.empty
+    ids = some_tracks["track_id"].tolist()
+
+    df = queries.tracks_by_ids(ids)
+    assert set(df["track_id"]) == set(ids)
+    assert list(df.columns) == ["track_id", "name", "artist", "album", "play_count"]
+
+
+def test_tracks_by_ids_empty_list():
+    df = queries.tracks_by_ids([])
+    assert df.empty
+
+
+def test_tracks_by_ids_unknown_id_omitted():
+    df = queries.tracks_by_ids(["zzzzzznonexistenttrackid"])
+    assert df.empty
+
+
 def test_warehouse_summary():
     df = queries.warehouse_summary()
     assert len(df) == 1

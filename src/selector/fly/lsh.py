@@ -19,7 +19,44 @@ from __future__ import annotations
 import numpy as np
 from scipy import sparse
 
-__all__ = ["FlyHash"]
+__all__ = ["FlyHash", "hamming_top_k"]
+
+
+def hamming_top_k(
+    query_tag: sparse.spmatrix | np.ndarray,
+    corpus: sparse.spmatrix,
+    k: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Top-k nearest rows of `corpus` to `query_tag` by Hamming distance.
+
+    Free function (not a `FlyHash` method) so callers who only have a tag
+    matrix on hand -- e.g. `selector.fly.pipeline`, which persists tags
+    separately from the `FlyHash` that produced them -- don't need to keep a
+    fitted `FlyHash` instance around just to call this. `FlyHash.hamming_neighbours`
+    below is a thin wrapper kept for backward compatibility.
+
+    For two binary vectors, Hamming distance = |a| + |b| - 2*|a & b|, so this
+    is computed with a single sparse matrix-vector product rather than
+    materialising any dense arrays. Returns `(indices, distances)`, both
+    length `min(k, n_candidates)`, sorted nearest first.
+    """
+    corpus = sparse.csr_matrix(corpus).astype(np.float64)
+
+    query = sparse.csr_matrix(query_tag).astype(np.float64)
+    if query.shape[0] != 1:
+        query = query.reshape(1, -1)
+
+    intersection = np.asarray(corpus.dot(query.T).todense()).ravel()
+    corpus_popcount = np.asarray(corpus.sum(axis=1)).ravel()
+    query_popcount = query.sum()
+
+    distances = corpus_popcount + query_popcount - 2 * intersection
+
+    k = min(k, distances.shape[0])
+    nearest = np.argpartition(distances, k - 1)[:k]
+    order = np.argsort(distances[nearest])
+    nearest = nearest[order]
+    return nearest, distances[nearest]
 
 
 class FlyHash:
@@ -181,9 +218,8 @@ class FlyHash:
         """Top-k nearest tags to `query_tag` by Hamming distance.
 
         `tags` defaults to the corpus cached by the last `transform()` call.
-        For two binary vectors, Hamming distance = |a| + |b| - 2*|a & b|, so
-        this is computed with a single sparse matrix-vector product rather
-        than materialising any dense arrays.
+        Delegates to the free function `hamming_top_k`; see there for the
+        distance computation.
 
         Returns `(indices, distances)`, both length `min(k, n_candidates)`,
         sorted nearest first.
@@ -191,20 +227,4 @@ class FlyHash:
         corpus = tags if tags is not None else self.tags_
         if corpus is None:
             raise RuntimeError("no tag matrix available: call transform() first or pass tags=")
-        corpus = sparse.csr_matrix(corpus).astype(np.float64)
-
-        query = sparse.csr_matrix(query_tag).astype(np.float64)
-        if query.shape[0] != 1:
-            query = query.reshape(1, -1)
-
-        intersection = np.asarray(corpus.dot(query.T).todense()).ravel()
-        corpus_popcount = np.asarray(corpus.sum(axis=1)).ravel()
-        query_popcount = query.sum()
-
-        distances = corpus_popcount + query_popcount - 2 * intersection
-
-        k = min(k, distances.shape[0])
-        nearest = np.argpartition(distances, k - 1)[:k]
-        order = np.argsort(distances[nearest])
-        nearest = nearest[order]
-        return nearest, distances[nearest]
+        return hamming_top_k(query_tag, corpus, k)

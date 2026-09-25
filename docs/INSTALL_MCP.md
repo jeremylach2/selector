@@ -94,6 +94,13 @@ query plus `warehouse_summary` as an orientation call: `warehouse_summary`,
 `spotify_top_tracks`, `spotify_recently_played`, `spotify_create_playlist`,
 `reconcile_library`.
 
+**Fly brain tools** (read `data/fly_tags.npz`, built by Step 12's
+`uv run python -m selector.fly.pipeline`): `more_like_this(track, k)` —
+nearest tracks by Hamming distance over fly-brain fingerprints, i.e. content
+similarity — and `fly_score(track)` — the mushroom body's predicted
+approach/avoid valence for a track, trained on this person's actual
+skip/play-out history. Both accept a `track_id` or a name substring.
+
 Every tool returns a markdown table (or a short status message for the
 write-actions), capped at 40 rows with a "… N more rows" note when
 truncated.

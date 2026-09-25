@@ -346,6 +346,24 @@ def track_detail(
         ).df()
 
 
+def tracks_by_ids(
+    track_ids: list[str],
+    db_path: Path = DEFAULT_DB_PATH,
+) -> pd.DataFrame:
+    """Name/artist/album/play_count for a specific list of `track_id`s, in no
+    particular order. Used to label the results of a fly-brain lookup
+    (`selector.fly.pipeline` deals only in `track_id`s), rather than issuing
+    one `track_detail` call per neighbour.
+    """
+    if not track_ids:
+        return pd.DataFrame(columns=["track_id", "name", "artist", "album", "play_count"])
+    with _connect(db_path) as con:
+        return con.execute(
+            "SELECT track_id, name, artist, album, play_count FROM tracks WHERE track_id = ANY(?)",
+            [track_ids],
+        ).df()
+
+
 def warehouse_summary(db_path: Path = DEFAULT_DB_PATH) -> pd.DataFrame:
     """Date range, total plays, unique tracks/artists, and total hours listened."""
     with _connect(db_path) as con:
