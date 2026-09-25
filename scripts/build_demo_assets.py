@@ -31,7 +31,7 @@ import gzip
 import io
 import json
 import zipfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import duckdb
@@ -254,7 +254,7 @@ def build_sample(cat: pd.DataFrame, tags) -> None:
                         reason_end, ms = "trackdone", dur_ms
                     t += timedelta(milliseconds=ms)
                     records.append({
-                        "ts": t.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                        "ts": t.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
                         "platform": "android" if start.hour < 17 else "windows",
                         "ms_played": ms,
                         "conn_country": "ZZ",

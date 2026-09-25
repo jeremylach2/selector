@@ -1,0 +1,29 @@
+# Thin on purpose: fast checks that catch the mistakes that matter here
+# (personal data, secrets, lint). Tests and the web build run in CI.
+#
+# Setup once:  uvx pre-commit install
+# Run by hand: uvx pre-commit run --all-files
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=2000]
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: detect-private-key
+
+  - repo: local
+    hooks:
+      - id: personal-data
+        name: no personal data or secrets
+        entry: uv run --no-sync python scripts/check_personal_data.py
+        language: system
+        pass_filenames: true
+      # Runs through uv so the hook uses the ruff version pinned in uv.lock,
+      # the same one CI uses.
+      - id: ruff
+        name: ruff
+        entry: uv run --no-sync ruff check --fix
+        language: system
+        types: [python]

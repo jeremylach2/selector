@@ -12,6 +12,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from selector.mcp.http_server import app  # noqa: E402
+from selector.mcp.http_server import app
 
 __all__ = ["app"]
