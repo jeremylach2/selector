@@ -41,7 +41,7 @@ type CatalogJson = {
 
 // A CDN may already have decoded the gzip for us (Content-Encoding), so
 // only gunzip when the gzip magic bytes are actually there.
-async function fetchBytes(url: string): Promise<Uint8Array> {
+export async function fetchBytes(url: string): Promise<Uint8Array> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Couldn't load ${url} (${res.status})`);
   const buf = new Uint8Array(await res.arrayBuffer());

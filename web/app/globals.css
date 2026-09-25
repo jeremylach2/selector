@@ -754,3 +754,454 @@ footer p {
     transition: none !important;
   }
 }
+
+/* -- /watch: the fly DJ visualiser ----------------------------------------- */
+
+.watch .hero {
+  padding: 28px 0 16px;
+}
+.watch .hero h1 {
+  font-size: clamp(26px, 5vw, 40px);
+  margin-bottom: 10px;
+}
+.watch .hero .lede {
+  font-size: 16px;
+}
+.watch .eyebrow a {
+  color: inherit;
+}
+.cta-watch {
+  display: inline-flex;
+  gap: 6px;
+  margin-top: 14px;
+  font-weight: 600;
+  color: var(--accent-ink);
+}
+.theatre {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  min-height: 560px;
+}
+.theatre.loading {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-2);
+  text-align: center;
+}
+.spinner {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--grid);
+  border-top-color: var(--accent);
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.seed {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 14px;
+  min-width: 0;
+}
+.seed > div {
+  min-width: 0;
+}
+.seed h2 {
+  margin: 2px 0;
+  font-size: 20px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.seed .eyebrow {
+  margin: 0;
+  font-size: 11px;
+}
+.meta {
+  color: var(--ink-2);
+  font-size: 14px;
+  margin: 0;
+  font-weight: 400;
+}
+.chip-canvas {
+  flex: none;
+  border-radius: 6px;
+  display: block;
+}
+.beat-caption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: baseline;
+  font-size: 17px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.beat-caption .beat-n {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--muted);
+}
+.beat-caption .alias {
+  color: var(--ink-2);
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-size: 14px;
+}
+.beat-explain {
+  font-size: 14px;
+  color: var(--ink-2);
+  margin: 6px 0 12px;
+  min-height: 4.2em;
+  max-width: 72ch;
+}
+.features {
+  margin: 0 0 8px;
+}
+.fbars {
+  display: grid;
+  grid-template-columns: repeat(24, minmax(0, 1fr));
+  gap: 2px;
+}
+.fbar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.fbar .track {
+  width: 100%;
+  max-width: 16px;
+  height: 44px;
+  background: var(--surface-2);
+  border-radius: 3px 3px 0 0;
+  display: flex;
+  align-items: flex-end;
+}
+.fbar .track i {
+  display: block;
+  width: 100%;
+  background: var(--accent);
+  border-radius: 3px 3px 0 0;
+}
+/* Predicted inputs are hatched, measured are solid, so the kind never
+   rests on colour alone. */
+.fbar.predicted .track i {
+  background: repeating-linear-gradient(135deg, var(--accent) 0 3px, var(--accent-wash) 3px 5px);
+}
+.fbar .kind {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink-2);
+}
+.fbar.measured .kind {
+  color: var(--ink);
+}
+.fbar .name {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 10px;
+  color: var(--muted);
+  white-space: nowrap;
+  max-height: 72px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.features figcaption {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.stage {
+  position: relative;
+}
+.stage canvas {
+  display: block;
+}
+.counter {
+  margin: 4px 0 6px;
+  min-height: 24px;
+  font-size: 13px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.counter .num {
+  color: var(--ink);
+  font-weight: 700;
+  font-size: 16px;
+}
+.matches {
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.match {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px 0 6px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  transition:
+    top 0.45s ease,
+    opacity 0.35s ease,
+    transform 0.35s ease,
+    background 0.3s,
+    border-color 0.3s;
+}
+.match.still {
+  transition: none;
+}
+.match.winner {
+  background: var(--accent-wash);
+  border-color: var(--accent);
+}
+.m-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.m-text b,
+.m-text > span:not(.mbon) {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+}
+.m-text > span:not(.mbon) {
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.mbon {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  margin-top: 2px;
+}
+.mbon i {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+}
+.mbon .ap {
+  background: var(--s3);
+}
+.mbon .av {
+  background: var(--s5);
+}
+.m-num {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 12px;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+  min-width: 78px;
+}
+.m-num .big {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.1;
+}
+.m-num .val {
+  color: var(--ink);
+}
+.legend-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 12px;
+  color: var(--ink-2);
+  margin: 10px 0 0;
+}
+.legend-row i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  vertical-align: -1px;
+  margin-right: 4px;
+}
+.deck {
+  margin-top: 16px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.deck-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+.deck-head .eyebrow {
+  margin: 0;
+  font-size: 11px;
+}
+.deck-head h3 {
+  margin: 2px 0 0;
+  font-size: 19px;
+  overflow-wrap: anywhere;
+}
+.fly {
+  flex: none;
+}
+.changed {
+  margin: 10px 0 0;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.changed.yes {
+  color: var(--ink);
+  font-weight: 600;
+}
+.liner {
+  font-size: 15px;
+  line-height: 1.5;
+  margin: 10px 0;
+  min-height: 3em;
+  max-width: 72ch;
+}
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  background: var(--ink);
+  vertical-align: -2px;
+  margin-left: 1px;
+  animation: blink 1s steps(1) infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+.synapses {
+  position: relative;
+  margin-top: 6px;
+}
+.synapses canvas {
+  display: block;
+}
+.syn-legend span {
+  position: absolute;
+  bottom: -2px;
+  transform: translateX(-50%);
+  font-size: 11px;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.synapses + .note {
+  margin-top: 18px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.teach {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.btn.ghost {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--axis);
+}
+.btn.skip {
+  background: var(--ink);
+  color: var(--page);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.lessons {
+  margin: 14px 0 0;
+  padding-left: 20px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.lessons li + li {
+  margin-top: 4px;
+}
+.transport {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px -16px;
+  padding: 10px 16px;
+  background: var(--page);
+  border-top: 1px solid var(--border);
+}
+.transport .btn {
+  min-width: 88px;
+  flex: none;
+}
+.scrub {
+  flex: 1;
+  min-width: 60px;
+  display: flex;
+}
+.scrub input {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.transport .time {
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.seed-pick .note {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.watch-foot {
+  font-size: 13px;
+  color: var(--ink-2);
+  padding: 24px 0 48px;
+  max-width: 72ch;
+}
+@media (max-width: 480px) {
+  .theatre {
+    padding: 12px;
+  }
+  .fbar .name {
+    display: none;
+  }
+  .m-num {
+    min-width: 64px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner,
+  .caret {
+    animation: none;
+  }
+}
+.inline-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  vertical-align: -1px;
+}

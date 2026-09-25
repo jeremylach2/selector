@@ -13,6 +13,14 @@ static files under `web/public/`:
 - `fly/tags.bin.gz` -- every track's fly-brain fingerprint (the 130 active
   Kenyon cells of 2,597) as delta-encoded uint8 gaps, row order matching the
   catalog. The browser rebuilds a bitset from it for Hamming search.
+- `fly/circuit.json.gz` -- what the `/watch` visualiser needs to rerun the
+  hash live in the browser rather than read the finished tags: the pooled
+  FlyWire PN->KC projection exactly as `FlyHash` stored it, the `fit()`
+  normalisation statistics, and every catalog track's 24-number input
+  vector (predicted valence, intensity, era, moods; measured audio where a
+  preview matched). The build recomputes every tag from this file the way
+  the browser will and refuses to write it if any differs from
+  `data/fly_tags.npz` outside ties at the winner-take-all cutoff.
 - `sample/sample_spotify_data.zip` -- a **synthetic** Extended Streaming History
   export in Spotify's real schema, for visitors with no export of their own.
   The listener is invented: tracks are drawn from the catalog around three
@@ -40,12 +48,18 @@ import pandas as pd
 
 from selector.dj.pool import MAX_DURATION_MS, MIN_DURATION_MS, MIN_VALID_BPM, measured_energy
 from selector.fly import pipeline as fly_pipeline
+from selector.fly.connectome import (
+    DATA_VERSION,
+    build_projection_matrix,
+    download_flywire_data,
+)
 from selector.fly.lsh import hamming_distances
 from selector.warehouse.build import DEFAULT_DB_PATH
 
 WEB_PUBLIC = Path("web/public")
 CATALOG_PATH = WEB_PUBLIC / "fly/catalog.json.gz"
 TAGS_PATH = WEB_PUBLIC / "fly/tags.bin.gz"
+CIRCUIT_PATH = WEB_PUBLIC / "fly/circuit.json.gz"
 SAMPLE_PATH = WEB_PUBLIC / "sample/sample_spotify_data.zip"
 
 SEED = 7
@@ -157,6 +171,64 @@ def write_catalog(cat: pd.DataFrame, tags) -> None:
         f"catalog: {len(cat):,} tracks ({cat['energy'].notna().sum():,} in the DJ crate), "
         f"{CATALOG_PATH.stat().st_size / 1e6:.2f} MB; tags {TAGS_PATH.stat().st_size / 1e6:.2f} MB"
     )
+
+
+def write_circuit(cat: pd.DataFrame, tags) -> None:
+    """The live-circuit asset for `/watch`: projection, fit statistics and
+    input vectors, in catalog row order. See the module docstring."""
+    track_ids, X = fly_pipeline.build_feature_matrix("full")
+    fly, _ = fly_pipeline.fit_fly(track_ids, X)
+    X = X[cat["tag_row"].to_numpy()]
+    proj = fly.projection_matrix
+    raw, _, _ = build_projection_matrix(*download_flywire_data())
+
+    # Recompute the tags the way `web/lib/circuit.ts` does, row by row in
+    # stored CSR order, and compare with the shipped fingerprints.
+    norm = np.clip((X - fly._mean) / fly._std, 0.0, None)
+    act = np.zeros((len(X), proj.shape[0]))
+    for i in range(proj.shape[0]):
+        for jj in range(proj.indptr[i], proj.indptr[i + 1]):
+            act[:, i] += proj.data[jj] * norm[:, proj.indices[jj]]
+    k = int(np.diff(tags.indptr)[0])
+    reordered = tags[cat["tag_row"].to_numpy()]
+    reordered.sort_indices()
+    cutoff = -np.sort(-act, axis=1)[:, k - 1 : k]
+    above = act > cutoff
+    for r in range(len(X)):
+        shipped = np.zeros(proj.shape[0], dtype=bool)
+        shipped[reordered.indices[reordered.indptr[r] : reordered.indptr[r + 1]]] = True
+        tied = act[r] == cutoff[r, 0]
+        if (above[r] & ~shipped).any() or (shipped & ~(above[r] | tied)).any():
+            raise ValueError(f"recomputed tag for {cat['track_id'].iat[r]} differs from fly_tags.npz")
+
+    columns = (
+        [("valence", "predicted"), ("intensity", "predicted")]
+        + [(f"era {e}", "predicted") for e in fly_pipeline.ERA_VOCAB]
+        + [(m, "predicted") for m in fly_pipeline.MOOD_VOCAB]
+        + [(c.removesuffix("_scaled").replace("_", " "), "measured") for c in fly_pipeline.MEASURED_COLUMNS]
+        + [("has audio", "measured")]
+    )
+    measured = np.flatnonzero(X[:, -1] > 0)
+    payload = {
+        "version": 1,
+        "flywire": DATA_VERSION,
+        "hemisphere": "right",
+        "n_pn_real": int(raw.shape[1]),
+        "raw_synapses": int(raw.data.sum()),
+        "columns": [{"name": n, "kind": kind} for n, kind in columns],
+        "mean": fly._mean.tolist(),
+        "std": fly._std.tolist(),
+        "indptr": proj.indptr.tolist(),
+        "indices": proj.indices.tolist(),
+        "data": [int(v) for v in proj.data],
+        "valence": X[:, 0].tolist(),
+        "intensity": X[:, 1].tolist(),
+        "measured_rows": measured.tolist(),
+        "measured": X[measured][:, -1 - len(fly_pipeline.MEASURED_COLUMNS) : -1].tolist(),
+    }
+    CIRCUIT_PATH.write_bytes(gzip.compress(json.dumps(payload, separators=(",", ":")).encode(), 9))
+    ties = int((np.abs(act - cutoff) == 0).sum(axis=1).__gt__(1).sum())
+    print(f"circuit: {CIRCUIT_PATH.stat().st_size / 1e6:.2f} MB, every tag reproduced ({ties:,} rows tie at the cutoff)")
 
 
 # -- the synthetic listener -------------------------------------------------
@@ -295,6 +367,7 @@ def build_sample(cat: pd.DataFrame, tags) -> None:
 def main() -> None:
     cat, tags = build_catalog()
     write_catalog(cat, tags)
+    write_circuit(cat, tags)
     build_sample(cat, tags)
 
 

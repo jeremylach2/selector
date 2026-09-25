@@ -1,8 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type Catalog, loadCatalog } from "@/lib/catalog";
 import { matchHistory, trainMushroomBody } from "@/lib/fly";
+import { setSessionHistory } from "@/lib/session";
 import type { Dashboard, History, ParseSource, WorkerOut } from "@/lib/types";
 import { compact, ListeningClock, SkipOffenders, TasteDrift, TopArtists } from "./Charts";
 import DJSection from "./DJSection";
@@ -79,6 +81,7 @@ export default function Demo() {
           setRun((r) => r && { ...r, firstResultMs: r.firstResultMs ?? performance.now() - r.started });
           if (msg.type === "done") {
             setHistory(msg.history);
+            setSessionHistory({ history: msg.history, source: kind });
             setRun((r) => r && { ...r, doneMs: performance.now() - r.started, progress: "Done", frac: 1 });
             worker.terminate();
           }
@@ -124,6 +127,10 @@ export default function Demo() {
             listening history, measured audio features, and the fly&apos;s olfactory circuit, wired from the real FlyWire
             connectome, as the similarity engine.
           </p>
+
+          <Link className="cta-watch" href="/watch">
+            Watch the fly brain pick a track, live →
+          </Link>
 
           <div className="privacy">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">

@@ -155,3 +155,11 @@ export function percentileRank(values: Float64Array | number[]): Float64Array {
   }
   return out;
 }
+
+export function cloneMushroomBody(mb: MushroomBody): MushroomBody {
+  const out = new MushroomBody(mb.wApproach.length, mb.lr, mb.decay);
+  out.wApproach.set(mb.wApproach);
+  out.wAvoid.set(mb.wAvoid);
+  out.lessons = mb.lessons;
+  return out;
+}
