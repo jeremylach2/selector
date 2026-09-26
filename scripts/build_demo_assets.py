@@ -46,7 +46,13 @@ import duckdb
 import numpy as np
 import pandas as pd
 
-from selector.dj.pool import MAX_DURATION_MS, MIN_DURATION_MS, MIN_VALID_BPM, measured_energy
+from selector.dj.pool import (
+    FALLBACK_DURATION_MS,
+    MAX_DURATION_MS,
+    MIN_DURATION_MS,
+    MIN_VALID_BPM,
+    measured_energy,
+)
 from selector.fly import pipeline as fly_pipeline
 from selector.fly.connectome import (
     DATA_VERSION,
@@ -125,11 +131,15 @@ def build_catalog() -> tuple[pd.DataFrame, object]:
         .merge(features, on="track_id")
         .merge(audio, on="track_id", how="left")
     )
-    duration = cat["duration_ms"].where(cat["duration_ms"].between(MIN_DURATION_MS, MAX_DURATION_MS))
-    cat["duration_s"] = (duration / 1000).round()
-    # Same rule as the DJ's crate: a measured track with no plausible
-    # duration or a 10-minute-plus live cut can't be placed on the arc.
-    in_crate = cat["energy"].notna() & cat["duration_s"].notna()
+    duration_ms = cat["duration_ms"].where(cat["duration_ms"] >= MIN_DURATION_MS)
+    duration_ms = duration_ms.fillna(FALLBACK_DURATION_MS)
+    cat["duration_s"] = (duration_ms / 1000).round()
+    # Same rule as the DJ's crate (`build_crate` in `selector/dj/pool.py`): a
+    # track with no completed play falls back to a 210s guess rather than
+    # being dropped, so the demo and the MCP tool draw from the same track
+    # set. Only an implausibly long measured duration (a 10-minute-plus live
+    # cut) excludes a track from the arc.
+    in_crate = cat["energy"].notna() & (duration_ms <= MAX_DURATION_MS)
     cat.loc[~in_crate, ["tempo", "energy"]] = np.nan
     cat = cat.sort_values("track_id").reset_index(drop=True)
     return cat, tags

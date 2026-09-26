@@ -34,19 +34,18 @@ of `selector/audio/resolve.py` to the full library raised that to 16,739
 it against a model's guess at energy would make it a constraint on nothing.
 Each crate row combines four sources:
 
-**Known discrepancy, found at the larger scale.** `build_crate` here fills a
+**Fixed discrepancy, found at the larger scale.** `build_crate` fills a
 track with no completed play (`duration_ms` null) with a 210s fallback
-duration and keeps it in the crate: 16,700 tracks. `scripts/build_demo_assets.py`'s
-`write_catalog`, which builds the web demo's crate, instead excludes any
-track with no duration at all: 11,181 tracks. At the original 3,198-track,
+duration rather than dropping it. `scripts/build_demo_assets.py`'s
+`build_catalog`, which builds the web demo's crate, used to exclude any
+track with no duration at all instead. At the original 3,198-track,
 most-played scope this barely mattered, since a heavily played track is
 likely to have at least one `trackdone` play. At the full-library scope,
 reaching into tracks played once or twice, a lot more of them never
-recorded a completed play, so the two crates now diverge by about a third.
-Neither is obviously more correct — a fallback duration is a guess, and
-exclusion silently shrinks what "every track with audio" means — so this
-is reported rather than resolved: the MCP `dj_set` tool and the web demo's
-DJ section currently draw from different-sized crates.
+recorded a completed play, so the two crates diverged by about a third
+(16,700 vs 11,181) before `build_catalog` was changed to use the same
+fallback rule, so the MCP `dj_set` tool and the web demo's DJ section now
+draw from the same track set.
 
 | Source | Columns | Used by |
 |---|---|---|

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 DEFAULT_LIBROSA_PATH = Path("data/features_librosa.parquet")
@@ -41,14 +42,22 @@ LIBROSA_MINMAX_COLUMNS = [
     "harmonic_percussive_ratio",
 ]
 
+# harmonic_percussive_ratio is a ratio of two energies, not a bounded
+# measurement: it's heavy-tailed, and a handful of near-silent-percussive
+# outlier tracks stretch the min-max range so far that the other 99% of
+# tracks all land within 0.01 of each other. log1p compresses that tail
+# before scaling so the rest of the column keeps real variation.
+LOG_BEFORE_MINMAX = {"harmonic_percussive_ratio"}
+
 
 def _minmax_scale(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
     df = df.copy()
     for col in columns:
         if col not in df.columns:
             continue
-        lo, hi = df[col].min(), df[col].max()
-        df[f"{col}_scaled"] = 0.5 if hi == lo else (df[col] - lo) / (hi - lo)
+        values = np.log1p(df[col]) if col in LOG_BEFORE_MINMAX else df[col]
+        lo, hi = values.min(), values.max()
+        df[f"{col}_scaled"] = 0.5 if hi == lo else (values - lo) / (hi - lo)
     return df
 
 

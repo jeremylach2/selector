@@ -280,7 +280,7 @@ export default function Demo() {
           <p>
             <b>Where the numbers come from.</b> The catalog is 19,386 tracks from the author&apos;s own listening
             history. Tempo and energy are measured from 30-second previews (iTunes and Deezer public APIs) for the
-            ~2,700 tracks that matched. Mood and era are predicted by a fine-tuned small model. Your tracks outside that
+            16,741 tracks that matched. Mood and era are predicted by a fine-tuned small model. Your tracks outside that
             catalog still count in the charts but can&apos;t be fingerprinted. No audio is served by this page, only
             derived numbers.
           </p>
