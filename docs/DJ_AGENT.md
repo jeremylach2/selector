@@ -27,11 +27,26 @@ result.
 
 ## The crate: measured, predicted, learned
 
-Only tracks with **measured** audio features are playable. That is 3,198 of
-19,386, the top tracks by play count that matched a preview clip in Step 8.
-The arc is a hard constraint, and checking it against a model's guess at
-energy would make it a constraint on nothing. Each crate row combines four
-sources:
+Only tracks with **measured** audio features are playable. Audio coverage
+was originally the top 3,198 of 19,386 tracks by play count; an expansion
+of `selector/audio/resolve.py` to the full library raised that to 16,739
+(see `docs/AUDIO_MATCHING.md`). The arc is a hard constraint, and checking
+it against a model's guess at energy would make it a constraint on nothing.
+Each crate row combines four sources:
+
+**Known discrepancy, found at the larger scale.** `build_crate` here fills a
+track with no completed play (`duration_ms` null) with a 210s fallback
+duration and keeps it in the crate: 16,700 tracks. `scripts/build_demo_assets.py`'s
+`write_catalog`, which builds the web demo's crate, instead excludes any
+track with no duration at all: 11,181 tracks. At the original 3,198-track,
+most-played scope this barely mattered, since a heavily played track is
+likely to have at least one `trackdone` play. At the full-library scope,
+reaching into tracks played once or twice, a lot more of them never
+recorded a completed play, so the two crates now diverge by about a third.
+Neither is obviously more correct — a fallback duration is a guess, and
+exclusion silently shrinks what "every track with audio" means — so this
+is reported rather than resolved: the MCP `dj_set` tool and the web demo's
+DJ section currently draw from different-sized crates.
 
 | Source | Columns | Used by |
 |---|---|---|

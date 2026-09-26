@@ -168,15 +168,19 @@ def _deezer_candidates(client: httpx.Client, title: str, artist: str, limit: int
 
 def _best_candidate(
     client: httpx.Client, title: str, artist: str
-) -> tuple[Candidate | None, float]:
+) -> tuple[Candidate | None, float, bool]:
     """iTunes first, Deezer as fallback. Returns the best-scoring candidate
-    from whichever source produces one above the threshold-agnostic best."""
+    from whichever source produces one above the threshold-agnostic best,
+    plus whether any source actually answered. A track where every source
+    errored has no verdict yet, and must not be recorded as unmatched."""
     best: Candidate | None = None
     best_score = -1.0
+    answered = False
 
     for fetch_candidates in (_itunes_candidates, _deezer_candidates):
         try:
             candidates = fetch_candidates(client, title, artist)
+            answered = True
         except httpx.HTTPError:
             candidates = []
         for cand in candidates:
@@ -188,7 +192,7 @@ def _best_candidate(
         if best_score >= DEFAULT_MATCH_THRESHOLD:
             break
 
-    return best, best_score
+    return best, best_score, answered
 
 
 def _load_checkpoint() -> dict[str, dict]:
@@ -235,6 +239,9 @@ def resolve_tracks(
 
     Idempotent: tracks already present in the checkpoint file are skipped on
     re-run, and the audio directory is only ever added to, never re-downloaded.
+    A track is checkpointed only once it has a real verdict. If every API
+    call errored, or the preview download failed, it is left out so the next
+    run retries it: an outage must not be remembered as "no match".
     """
     tracks = _top_tracks(limit, db_path, track_ids)
     done = _load_checkpoint()
@@ -243,9 +250,13 @@ def resolve_tracks(
     print(f"{len(done)} already resolved, {len(to_process)} to go")
 
     batch: list[MatchResult] = []
+    retry_later = 0
     with httpx.Client(timeout=15.0, headers={"User-Agent": USER_AGENT}) as client:
         for _, row in to_process.iterrows():
-            candidate, score = _best_candidate(client, row["name"], row["artist"])
+            candidate, score, answered = _best_candidate(client, row["name"], row["artist"])
+            if not answered:
+                retry_later += 1
+                continue
 
             local_path = None
             match_source = None
@@ -261,7 +272,10 @@ def resolve_tracks(
                     matched_title = candidate.title
                     matched_artist = candidate.artist
                 else:
-                    score = 0.0  # download failed; don't record a phantom match
+                    # Download failed: no phantom match, and no permanent
+                    # "unmatched" either. The next run retries it.
+                    retry_later += 1
+                    continue
 
             result = MatchResult(
                 track_id=row["track_id"],
@@ -283,6 +297,8 @@ def resolve_tracks(
 
     if batch:
         _append_checkpoint(batch)
+    if retry_later:
+        print(f"{retry_later:,} tracks hit API or download errors and were not checkpointed; rerun to retry them.")
 
     all_rows = list(_load_checkpoint().values())
     return pd.DataFrame(all_rows)

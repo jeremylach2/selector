@@ -114,3 +114,43 @@ def test_projection_matrix_setter_is_the_flywire_seam():
 
     tags = fly.transform(X)
     assert tags.shape == (5, 6)
+
+
+def test_hamming_top_k_orders_ties_by_tie_break_across_the_cutoff():
+    from selector.fly.lsh import hamming_top_k
+
+    # Rows 1-4 are identical to the query (distance 0); row 5 is further.
+    corpus = sparse.csr_matrix(
+        np.array([[1, 1, 0, 0]] * 5 + [[0, 0, 1, 1]], dtype=bool)
+    )
+    query = corpus[0]
+    score = np.array([0.0, 0.1, 0.9, 0.2, 0.8, 1.0])
+
+    idx, dist = hamming_top_k(query, corpus, k=3, tie_break=score)
+
+    # All five rows tie at 0, so the best-scored three win, even though
+    # row 5 (score 1.0) scores highest overall: it's further away.
+    assert list(idx) == [2, 4, 3]
+    assert list(dist) == [0, 0, 0]
+
+
+def test_hamming_top_k_without_tie_break_is_unchanged():
+    from selector.fly.lsh import hamming_top_k
+
+    corpus = sparse.csr_matrix(np.array([[1, 1, 0], [1, 0, 1], [0, 1, 1]], dtype=bool))
+    idx, dist = hamming_top_k(corpus[0], corpus, k=2)
+    assert idx[0] == 0 and dist[0] == 0
+
+
+def test_hamming_top_k_secondary_key_separates_identical_primary_scores():
+    # Identical tags get identical tag-derived scores (like fly valence), so
+    # only a second, independent key can order them.
+    from selector.fly.lsh import hamming_top_k
+
+    corpus = sparse.csr_matrix(np.array([[1, 1, 0, 0]] * 4, dtype=bool))
+    taste = np.array([0.5, 0.5, 0.5, 0.5])
+    plays = np.array([0.0, 3.0, 9.0, 1.0])
+
+    idx, _ = hamming_top_k(corpus[0], corpus, k=3, tie_break=[taste, plays])
+
+    assert list(idx) == [2, 1, 3]

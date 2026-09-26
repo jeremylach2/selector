@@ -16,6 +16,8 @@ the seam this module exists to provide.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+
 import numpy as np
 from scipy import sparse
 
@@ -46,8 +48,17 @@ def hamming_top_k(
     query_tag: sparse.spmatrix | np.ndarray,
     corpus: sparse.spmatrix,
     k: int,
+    tie_break: np.ndarray | Sequence[np.ndarray] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Top-k nearest rows of `corpus` to `query_tag` by Hamming distance.
+
+    Rows at equal distance are genuinely indistinguishable to the hash, and
+    without `tie_break` their order is arbitrary. `tie_break` is one score
+    per corpus row, or several (most important first), each higher-first,
+    that order them instead. It is applied to every row tied at the cutoff
+    distance, not only to those that happened to fall inside the first k.
+    A score derived from the tags themselves (such as mushroom-body valence)
+    can't separate identical tags, so pair it with one that doesn't.
 
     Free function (not a `FlyHash` method) so callers who only have a tag
     matrix on hand -- e.g. `selector.fly.pipeline`, which persists tags
@@ -61,6 +72,14 @@ def hamming_top_k(
     distances = hamming_distances(query_tag, corpus)
 
     k = min(k, distances.shape[0])
+    if tie_break is not None:
+        cutoff = np.partition(distances, k - 1)[k - 1]
+        candidates = np.flatnonzero(distances <= cutoff)
+        keys = np.atleast_2d(np.asarray(tie_break, dtype=np.float64))
+        # lexsort treats its last key as primary: distance, then each tie_break in order.
+        order = np.lexsort((*(-keys[i][candidates] for i in reversed(range(len(keys)))), distances[candidates]))
+        nearest = candidates[order[:k]]
+        return nearest, distances[nearest]
     nearest = np.argpartition(distances, k - 1)[:k]
     order = np.argsort(distances[nearest])
     nearest = nearest[order]

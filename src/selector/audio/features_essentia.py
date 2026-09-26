@@ -29,6 +29,9 @@ import pandas as pd
 DEFAULT_MATCHES_PATH = Path("data/audio_matches.parquet")
 DEFAULT_MODEL_DIR = Path("data/essentia_models")
 DEFAULT_OUTPUT_PATH = Path("data/features_essentia.parquet")
+# One JSON row per finished clip, so a crash hours into a large run costs
+# one clip rather than the whole run.
+CHECKPOINT_PATH = Path("data/.essentia_checkpoint.jsonl")
 
 SAMPLE_RATE = 16000  # required by the musicnn-msd model family, per each model's .json
 
@@ -89,9 +92,7 @@ def extract_features(path: str, graphs: dict[str, tuple[object, int]]) -> dict[s
     """Compute one row of Essentia model predictions for a single clip.
 
     Returns None on any decode or inference failure so one bad clip doesn't
-    kill the whole batch — this run has no checkpointing, unlike
-    ``resolve.py``, so an unhandled exception here loses everything, not
-    just the one clip (see ``_predict_all``, which can raise on a
+    kill the whole batch (see ``_predict_all``, which can raise on a
     degenerate/very-short clip where a model returns a plain list instead
     of the expected ndarray).
     """
@@ -112,7 +113,21 @@ def extract_features(path: str, graphs: dict[str, tuple[object, int]]) -> dict[s
         return None
 
 
-def extract_all(matches: pd.DataFrame, model_dir: Path = DEFAULT_MODEL_DIR) -> pd.DataFrame:
+def _load_checkpoint(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
+def extract_all(
+    matches: pd.DataFrame,
+    model_dir: Path = DEFAULT_MODEL_DIR,
+    checkpoint_path: Path | None = None,
+    skip: frozenset[str] = frozenset(),
+) -> pd.DataFrame:
+    """Predict every matched clip not in `skip`, appending each finished row
+    to `checkpoint_path` when given. Clips that fail are not checkpointed,
+    so a rerun tries them again."""
     models = _load_model_metadata(model_dir)
     if not models:
         print(f"No Essentia model files found under {model_dir} - nothing to extract.")
@@ -121,8 +136,10 @@ def extract_all(matches: pd.DataFrame, model_dir: Path = DEFAULT_MODEL_DIR) -> p
     print(f"Loaded {len(models)}/{len(MODEL_POSITIVE_CLASS)} model(s): {sorted(models)}")
     graphs = _build_graphs(models)
 
-    matched = matches[matches["local_path"].notna()]
+    matched = matches[matches["local_path"].notna() & ~matches["track_id"].isin(skip)]
+    print(f"{len(skip):,} clips already done, {len(matched):,} to go")
     rows: list[dict] = []
+    checkpoint = checkpoint_path.open("a", encoding="utf-8") if checkpoint_path else None
     failures: list[str] = []
 
     for i, (_, r) in enumerate(matched.iterrows()):
@@ -136,9 +153,14 @@ def extract_all(matches: pd.DataFrame, model_dir: Path = DEFAULT_MODEL_DIR) -> p
             continue
         feats["track_id"] = r["track_id"]
         rows.append(feats)
+        if checkpoint:
+            checkpoint.write(json.dumps(feats) + "\n")
+            checkpoint.flush()
         if (i + 1) % 25 == 0:
-            print(f"  {i + 1}/{len(matched)} clips processed")
+            print(f"  {i + 1}/{len(matched)} clips processed", flush=True)
 
+    if checkpoint:
+        checkpoint.close()
     if failures:
         print(f"{len(failures)} clips failed to decode: {failures[:10]}{'...' if len(failures) > 10 else ''}")
 
@@ -150,10 +172,27 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--matches", type=Path, default=DEFAULT_MATCHES_PATH)
     parser.add_argument("--model-dir", type=Path, default=DEFAULT_MODEL_DIR)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT_PATH)
+    parser.add_argument(
+        "--fresh", action="store_true", help="recompute every clip, ignoring the existing output and checkpoint"
+    )
     args = parser.parse_args(argv)
 
     matches = pd.read_parquet(args.matches)
-    features = extract_all(matches, model_dir=args.model_dir)
+    if args.fresh:
+        CHECKPOINT_PATH.unlink(missing_ok=True)
+    # Resume: rows already in the output file or the checkpoint are kept, not recomputed.
+    previous = [] if args.fresh or not args.output.exists() else pd.read_parquet(args.output).to_dict("records")
+    previous += _load_checkpoint(CHECKPOINT_PATH)
+    CHECKPOINT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    new = extract_all(
+        matches,
+        model_dir=args.model_dir,
+        checkpoint_path=CHECKPOINT_PATH,
+        skip=frozenset(row["track_id"] for row in previous),
+    )
+    features = pd.concat([pd.DataFrame(previous), new], ignore_index=True)
+    if not features.empty:
+        features = features.drop_duplicates("track_id", keep="last")
     args.output.parent.mkdir(parents=True, exist_ok=True)
     features.to_parquet(args.output, index=False)
     print(f"Wrote {len(features):,} rows of Essentia features to {args.output}")

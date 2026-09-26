@@ -1,4 +1,4 @@
-# Audio matching — full-scope results (top 3,000 tracks)
+# Audio matching — full-library results (all 19,386 tracks)
 
 Spotify removed 30-second preview URLs for new apps in November 2024, so
 Step 8's pipeline (`selector/audio/resolve.py` + `selector/audio/fetch.py`)
@@ -6,10 +6,63 @@ resolves tracks against two public, keyless catalog APIs instead: the
 **iTunes Search API** (tried first) and the **Deezer public catalog API**
 (fallback). Neither is scraped, and no auth token is needed for search.
 
+## Full-library expansion
+
+The pipeline originally scoped to the top 3,000 tracks by play count (below),
+matched at 91.5%. Once the fly's fingerprint collisions were traced to the
+83.5% of the library with no audio (`docs/MBON_EVAL.md`), the same pipeline
+was re-run with `--limit 19386` to cover every track in the warehouse.
+
+**86.4% match rate (16,741/19,386)** — lower than the top-3,000 run, as
+expected: this run reaches deep into the one-or-two-play tail, which the
+earlier supplemental sample (below) already showed matches somewhat worse.
+
+By play-count decile (0 = most-played, 9 = least-played of the 19,386):
+
+| Decile | Match rate |
+|---|---|
+| 0 | 93.6% |
+| 1 | 88.2% |
+| 2 | 86.0% |
+| 3 | 87.2% |
+| 4 | 85.2% |
+| 5 | 82.6% |
+| 6 | 84.0% |
+| 7 | 84.6% |
+| 8 | 86.6% |
+| 9 | 85.4% |
+
+Flatter than the top-3,000 curve, because deciles here are of the *whole*
+library rather than just its most-played slice — decile 9 here is the bottom
+10% of all 19,386 tracks, mostly played once or twice, not the relatively
+mainstream "least-played of the top 3,000" the original run measured.
+
+**Source split: 15,513 Deezer, 1,228 iTunes** — an even more lopsided ratio
+than the top-3,000 run's 2,200:545, consistent with that run's finding that
+iTunes throttles hard at this request volume and Deezer carries the load.
+
+**Operational note.** The run hit exactly one API/download error across
+19,386 tracks, which the fix from this expansion (`resolve.py` no longer
+checkpoints a track it couldn't get a real verdict for) caught and left for
+a retry rather than recording as a false "unmatched." A second invocation
+of the same command picked it up and matched it.
+
+**Downstream effect.** Coverage feeding the fly brain went from 16.5%
+(3,198 tracks, the top-3,000 scope) to 86.3% (16,739 tracks — 2 clips failed
+librosa decoding). Fingerprint collisions dropped from 81.7% of the library
+sharing an exact tag to 40.4% (`docs/MBON_EVAL.md`), and the full-feature
+fly's skip-prediction AUC on unseen tracks improved from 0.542 to 0.562.
+The vibe tagger was re-run on the newly matched tracks with the audio arm
+(`docs/EVAL.md`); `docs/TEACHER.md`'s cost figures are unaffected, since no
+new teacher labels were needed for inference-only tagging.
+
+## Original scope: top 3,000 tracks by play count
+
 A 200-track pilot (see "Pilot results" below) validated matching quality
 and the download pipeline first. This section documents the full
 top-3,000-by-play-count run (`--limit 3000`, the default), done per
-`docs/DATA_FIX_PLAN.md` Step 2.
+`docs/DATA_FIX_PLAN.md` Step 2. It is superseded in scope by the full-library
+run above, but kept as the original validation record.
 
 ## Headline number
 

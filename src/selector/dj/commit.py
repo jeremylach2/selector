@@ -50,8 +50,8 @@ def playlist_title(brief: Brief, now: datetime) -> str:
 
 def playlist_description(brief: Brief) -> str:
     text = (
-        f"{brief.theme.description} Picked by a fruit-fly brain over my own listening history, "
-        "shaped to a measured energy arc: opener, build, peak, comedown."
+        f"{brief.theme.description} Picked with a fruit fly's olfactory circuit, wired from the "
+        "FlyWire connectome, as a similarity hash over my listening history, shaped to a measured energy arc: opener, build, peak, comedown."
     )
     return text[:MAX_DESCRIPTION_CHARS]
 

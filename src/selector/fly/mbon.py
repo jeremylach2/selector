@@ -1,4 +1,4 @@
-"""Mushroom body plasticity: the fly learns taste from its own skips.
+"""Mushroom body plasticity: learning taste from a listener's skips.
 
 Biology: dopaminergic neurons gate depression of Kenyon-cell to mushroom-body
 output-neuron (KC->MBON) synapses. A fly learns that an odour predicts

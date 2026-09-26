@@ -20,6 +20,17 @@ docs/GPU_INFERENCE.md for the exact launch commands) and checkpoints to
 `data/track_features_checkpoint.jsonl` after every track, so a kill resumes
 instead of restarting.
 
+Every row also carries `lyrics_status` ("lyrics", "instrumental" or
+"unknown", from `selector.tagger.enrich.lyrics_status`). The model sees
+"Lyrics: not available" for both of the last two, so it tends to describe
+every lyric-less track as an instrumental. The column says which ones
+lrclib actually confirmed.
+
+`--retag-ids FILE` drops those tracks from the checkpoint and re-tags just
+them, e.g. after `scripts/fetch_all_lyrics.py --recheck-empty` recovers
+lyrics. `--status-only` rewrites the parquet with a fresh `lyrics_status`
+column and no generation.
+
 `--dry-run` predicts using the trivial train-mean baseline instead of
 calling a model, so the output schema and the Step 12 handoff can be
 exercised end to end without a GPU server running — every row in that mode
@@ -39,7 +50,7 @@ import httpx
 import pandas as pd
 
 from selector.tagger.dataset import build_prompt_from_input, load_labels, split_by_artist
-from selector.tagger.enrich import LYRICS_DIR, _measured_features_by_track
+from selector.tagger.enrich import LYRICS_DIR, _measured_features_by_track, lyrics_status
 from selector.tagger.eval import _parse_prediction, train_mean_baseline_predictions
 from selector.tagger.gpu_infer import SERVER_URLS, generate_completion_gpu, server_healthy
 from selector.tagger.schema import TeacherInput
@@ -83,6 +94,25 @@ def _load_checkpoint(path: Path) -> dict[str, dict]:
             row = json.loads(line)
             cached[row["track_id"]] = row
     return cached
+
+
+def _with_lyrics_status(result: pd.DataFrame) -> pd.DataFrame:
+    return result.assign(lyrics_status=[lyrics_status(t) or "unknown" for t in result["track_id"]])
+
+
+def drop_from_checkpoint(path: Path, track_ids: set[str]) -> int:
+    """Remove `track_ids` from the checkpoint so the next run re-tags them."""
+    rows = _load_checkpoint(path)
+    kept = [row for tid, row in rows.items() if tid not in track_ids]
+    path.write_text("".join(json.dumps(row) + "\n" for row in kept), encoding="utf-8")
+    return len(rows) - len(kept)
+
+
+def write_output(checkpoint_path: Path, output_path: Path) -> pd.DataFrame:
+    result = _with_lyrics_status(pd.DataFrame(list(_load_checkpoint(checkpoint_path).values())))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    result.to_parquet(output_path, index=False)
+    return result
 
 
 def infer_dry_run(
@@ -181,12 +211,7 @@ def infer_all(
                 print(f"  {done:,}/{len(todo):,} done, {rate:.2f}/s, ~{remaining_min:.0f} min remaining")
 
     client.close()
-
-    all_rows = _load_checkpoint(checkpoint_path)
-    result = pd.DataFrame(list(all_rows.values()))
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    result.to_parquet(output_path, index=False)
-    return result
+    return write_output(checkpoint_path, output_path)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -202,7 +227,16 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="tag with the trivial baseline instead of calling llama-server",
     )
+    parser.add_argument("--retag-ids", type=Path, help="file of track ids to drop from the checkpoint and re-tag")
+    parser.add_argument(
+        "--status-only", action="store_true", help="refresh the lyrics_status column without generating"
+    )
     args = parser.parse_args(argv)
+
+    if args.status_only:
+        result = write_output(args.checkpoint, args.output)
+        print(f"Wrote {len(result):,} rows to {args.output}: {result['lyrics_status'].value_counts().to_dict()}")
+        return
 
     if args.dry_run:
         result = infer_dry_run(args.db_path, args.labels, args.audio_features)
@@ -217,6 +251,10 @@ def main(argv: list[str] | None = None) -> None:
                 f"llama-server for arm {arm} is not reachable at {url}. "
                 "Start it first - see docs/GPU_INFERENCE.md for the exact commands."
             )
+
+    if args.retag_ids:
+        ids = set(args.retag_ids.read_text(encoding="utf-8").split())
+        print(f"Dropped {drop_from_checkpoint(args.checkpoint, ids):,} tracks from the checkpoint to re-tag")
 
     result = infer_all(args.db_path, args.labels, args.audio_features, args.checkpoint, args.output, args.workers)
     fallback_rate = (result["label_source"] == "parse_fallback").mean()

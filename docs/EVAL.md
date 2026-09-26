@@ -340,16 +340,25 @@ the warehouse, replacing the earlier dry-run baseline.
 
 | | n | % |
 |---|---|---|
-| Arm A (no audio match) | 16,188 | 83.5% |
-| Arm C (matched audio) | 3,198 | 16.5% |
-| `label_source: finetuned_gpu` | 19,130 | 98.7% |
-| `label_source: parse_fallback` | 256 | 1.3% |
+| Arm A (no audio match) | 2,647 | 13.7% |
+| Arm C (matched audio) | 16,739 | 86.3% |
+| `label_source: finetuned_gpu` | 19,278 | 99.4% |
+| `label_source: parse_fallback` | 108 | 0.6% |
 
-The parse-fallback rate (1.5% for arm A, 0.3% for arm C) is in the same
+The parse-fallback rate (1.9% for arm A, 0.4% for arm C) is in the same
 range as the CPU/GPU eval rows above, as expected since it's the same
 models generating. Every row carries `arm` and `label_source`, so a
 downstream consumer (Step 12's fly brain, the DJ agent) can tell a
 fine-tuned prediction from a fallback rather than treating them the same.
+
+**Update: audio expansion.** The rows above originally reflected the
+top-3,000-by-play-count audio scope (16.5% arm C). `docs/AUDIO_MATCHING.md`'s
+resolve pipeline was re-run over the full warehouse, taking audio coverage
+to 86.4%; the 13,541 tracks that gained a match were re-tagged with the
+audio arm via `infer.py --retag-ids` (GPU inference only — no new teacher
+labels, so the cost figures in `docs/TEACHER.md` are unaffected). The
+numbers above are post-expansion. Effect on the fly brain and skip
+prediction: `docs/MBON_EVAL.md`.
 
 ## Still open
 

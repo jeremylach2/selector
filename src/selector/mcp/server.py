@@ -17,12 +17,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 from dotenv import load_dotenv
 from mcp.server.mcpserver import MCPServer
 
 from selector.fly import pipeline as fly_pipeline
-from selector.fly.lsh import hamming_top_k
+from selector.fly.lsh import hamming_distances, hamming_top_k
 from selector.spotify.auth import SpotifyAuthError
 from selector.spotify.client import SpotifyAPIError, SpotifyClient
 from selector.spotify.reconcile import reconcile_library as _reconcile_library
@@ -465,6 +466,8 @@ _fly_track_ids: list[str] | None = None
 _fly_tags = None
 _fly_track_index: dict[str, int] | None = None
 _fly_mbon = None
+_fly_taste = None
+_fly_plays = None
 
 
 def _missing_fly_tags_message(path: Path) -> str:
@@ -501,6 +504,28 @@ def _get_production_mbon(track_ids: list[str], tags) -> Any:
     return _fly_mbon
 
 
+def _get_fly_taste(track_ids: list[str], tags) -> np.ndarray:
+    """Every track's fly valence, one sparse product over the tag matrix.
+    Used to order tracks the hash can't tell apart, never as similarity."""
+    global _fly_taste
+    if _fly_taste is None:
+        mbon = _get_production_mbon(track_ids, tags)
+        _fly_taste = tags.astype(np.float64) @ (mbon.w_approach - mbon.w_avoid)
+    return _fly_taste
+
+
+def _get_play_counts(track_ids: list[str]) -> np.ndarray:
+    """Warehouse play count per fingerprint row. The second tie-break key:
+    identical fingerprints get identical taste scores, so only something
+    outside the fingerprint can order them."""
+    global _fly_plays
+    if _fly_plays is None:
+        with queries._connect(_db_path()) as con:
+            counts = dict(con.execute("SELECT track_id, play_count FROM tracks").fetchall())
+        _fly_plays = np.array([counts.get(t, 0) for t in track_ids], dtype=np.float64)
+    return _fly_plays
+
+
 def _resolve_track(track: str) -> tuple[str, str, str] | None:
     """Resolve a `track_id` or name substring to `(track_id, name, artist)`
     via the warehouse, the same resolution `track_detail` uses. `None` if
@@ -524,6 +549,12 @@ def more_like_this(track: str, k: int = 10) -> str:
     match is used. This is content/vibe similarity (shared Kenyon-cell
     activity from the vibe tagger's features), not taste — use `fly_score`
     for whether this person is predicted to actually like a track.
+
+    Many tracks share an identical fingerprint (mostly tracks with no
+    matched audio), so neighbours often tie. Tied tracks are ordered by the
+    fly's predicted taste, then by play count (identical fingerprints share
+    one taste score), and the output says how many tie: tell the user that
+    those tracks are equally similar, not ranked by similarity.
     """
     state = _load_fly_state()
     if state is None:
@@ -539,7 +570,8 @@ def more_like_this(track: str, k: int = 10) -> str:
     if idx is None:
         return f'"{name}" by {artist} has no fly-brain fingerprint yet (not in `track_features.parquet`).'
 
-    neighbour_idx, distances = hamming_top_k(tags[idx], tags, k=k + 1)
+    tie_break = [_get_fly_taste(track_ids, tags), _get_play_counts(track_ids)]
+    neighbour_idx, distances = hamming_top_k(tags[idx], tags, k=k + 1, tie_break=tie_break)
 
     rows = []
     for i, dist in zip(neighbour_idx, distances):
@@ -557,7 +589,29 @@ def more_like_this(track: str, k: int = 10) -> str:
 
     df = pd.DataFrame(rows)[["name", "artist", "hamming_distance"]] if rows else pd.DataFrame()
     header = f"Nearest to **{name}** by {artist}:\n\n"
-    return header + _df_to_markdown(df)
+    return header + _df_to_markdown(df) + _tie_note(tags, idx, [r["hamming_distance"] for r in rows])
+
+
+def _tie_note(tags, query_idx: int, shown: list[int]) -> str:
+    """Say how many tracks tie at each distance that appears more than once
+    among the neighbours shown, so ties aren't read as a ranking."""
+    all_distances = hamming_distances(tags[query_idx], tags)
+    notes = []
+    for d in sorted(set(shown)):
+        if shown.count(d) < 2:
+            continue
+        # The seed itself sits at distance 0 and isn't a neighbour.
+        tied = int((all_distances == d).sum()) - (1 if d == 0 else 0)
+        notes.append(f"{tied:,} tracks tie at distance {d}")
+    if not notes:
+        return ""
+    how = (
+        "Tracks at distance 0 have identical fingerprints, so they share one taste score too and are "
+        "ordered by play count."
+        if 0 in shown and shown.count(0) > 1
+        else "They're ordered by the fly's predicted taste (`fly_score`), then play count."
+    )
+    return "\n\n" + "; ".join(notes) + ". The fly can't tell tied tracks apart. " + how + " Neither is similarity."
 
 
 @server.tool()

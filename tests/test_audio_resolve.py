@@ -58,3 +58,32 @@ def test_score_candidate_different_song_scores_low():
         preview_url="https://example.com/x.m4a",
     )
     assert score_candidate("Blinding Lights", "The Weeknd", candidate) < 0.4
+
+
+def test_resolve_tracks_checkpoints_only_real_verdicts(tmp_path, monkeypatch):
+    # An API outage or failed download must be retried on the next run,
+    # never remembered as "no match". A genuine no-match is remembered.
+    import pandas as pd
+
+    from selector.audio import resolve
+
+    monkeypatch.setattr(resolve, "CHECKPOINT_PATH", tmp_path / "ckpt.jsonl")
+    monkeypatch.setattr(
+        resolve,
+        "_top_tracks",
+        lambda limit, db_path, track_ids=None: pd.DataFrame(
+            {"track_id": ["ok", "nomatch", "outage", "nodl"], "name": ["a", "b", "c", "d"],
+             "artist": ["x"] * 4, "play_count": [4, 3, 2, 1]}
+        ),
+    )
+    good = Candidate(source="deezer", source_id="1", title="a", artist="x", album="", preview_url="u")
+    verdicts = {"a": (good, 0.95, True), "b": (None, -1.0, True), "c": (None, -1.0, False), "d": (good, 0.95, True)}
+    monkeypatch.setattr(resolve, "_best_candidate", lambda client, title, artist: verdicts[title])
+    monkeypatch.setattr(
+        resolve, "download_preview", lambda client, url, track_id: None if track_id == "nodl" else f"{track_id}.mp3"
+    )
+
+    matches = resolve.resolve_tracks(limit=4)
+
+    assert sorted(matches["track_id"]) == ["nomatch", "ok"]
+    assert matches.set_index("track_id").at["ok", "local_path"] == "ok.mp3"

@@ -122,7 +122,7 @@ hash lengths on the same pooled-MNIST input.
 
 ![FlyHash vs. classical LSH vs. the real FlyWire circuit](img/fly_vs_lsh_connectome.png)
 
-At 4 bits, real and idealised are statistically tied and both clearly beat classical LSH. From 8 bits onward, real FlyHash falls increasingly behind idealised FlyHash, and by 64 bits it also falls behind classical LSH (.23 vs. .34). It underperforms the plain-random baseline outright. Idealised FlyHash converges with classical LSH at 64 bits; real FlyHash does not follow that trend and instead plateaus well below both.
+At 4 bits, real and idealised are statistically tied and both clearly beat classical LSH. From 8 bits onward, real FlyHash falls increasingly behind idealised FlyHash, and by 64 bits it also falls behind classical LSH (.23 vs. .33). It underperforms the plain-random baseline outright. Idealised FlyHash converges with classical LSH at 64 bits; real FlyHash does not follow that trend and instead plateaus well below both.
 
 Conclusion: the real connectome's wiring, once adapted to the tagger's feature width via pool_to_width, does not just fail to improve on a matched-statistics random circuit — it measurably underperforms one, and the gap widens with hash length. This is a stronger and more specific claim than "no difference," and it should be treated as a live hypothesis to check against on real vibe-tagger features in Step 12, not assumed to be an MNIST-specific artifact.
 

@@ -55,7 +55,23 @@ export default function FlySection({ catalog, catalogError, history, fly }: Prop
   }, [catalog, query]);
 
   const seed = picked ?? seeds[0] ?? null;
-  const neighbours = useMemo(() => (catalog && seed !== null ? moreLikeThis(catalog, seed, 10) : []), [catalog, seed]);
+  // This listener's plays per catalog row: the tie-break that identical
+  // fingerprints (which share one taste score) can still be ordered by.
+  const plays = useMemo(() => {
+    const out = new Float64Array(catalog?.size ?? 0);
+    playedRows.forEach((n, r) => (out[r] = n));
+    return out;
+  }, [catalog, playedRows]);
+  const neighbours = useMemo(
+    () => (catalog && seed !== null ? moreLikeThis(catalog, seed, 10, taste ? [taste, plays] : [plays]) : []),
+    [catalog, seed, taste, plays],
+  );
+  // The largest group of shown neighbours sitting at one distance, if any tie.
+  const tie = neighbours.reduce<{ distance: number; tied: number } | null>(
+    (best, nb) =>
+      neighbours.filter((x) => x.distance === nb.distance).length > 1 && (!best || nb.tied > best.tied) ? nb : best,
+    null,
+  );
 
   const o = fly?.overlap;
   return (
@@ -175,6 +191,17 @@ export default function FlySection({ catalog, catalogError, history, fly }: Prop
                   </li>
                 ))}
               </ol>
+              {tie && (
+                <p className="note">
+                  {tie.tied.toLocaleString()} tracks share Hamming distance {tie.distance} with this seed, and the fly
+                  can&apos;t tell them apart.{" "}
+                  {tie.distance !== 0 && taste
+                    ? "They're listed by the fly's taste score for this listener, then by plays. That order isn't similarity."
+                    : neighbours.some((nb) => nb.distance === tie.distance && plays[nb.row] > 0)
+                      ? "Identical fingerprints get identical taste scores too, so they're listed by how often this listener played them. That order isn't similarity."
+                      : "Identical fingerprints get identical taste scores too, and this listener hasn't played any of these, so their order is arbitrary."}
+                </p>
+              )}
             </div>
           )}
         </>

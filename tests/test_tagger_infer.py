@@ -1,4 +1,6 @@
 
+import json
+
 import httpx
 
 from selector.tagger import infer
@@ -74,3 +76,15 @@ def test_infer_one_falls_back_on_request_error(monkeypatch):
     row = infer._infer_one("t3", "A", item, fallback, client=object())
 
     assert row["label_source"] == "parse_fallback"
+
+
+def test_drop_from_checkpoint_removes_only_named_tracks(tmp_path):
+    from selector.tagger.infer import _load_checkpoint, drop_from_checkpoint
+
+    path = tmp_path / "ckpt.jsonl"
+    path.write_text(
+        "".join(json.dumps({"track_id": t, "valence": 0.5}) + "\n" for t in ["a", "b", "c"]),
+        encoding="utf-8",
+    )
+    assert drop_from_checkpoint(path, {"b", "zzz"}) == 1
+    assert list(_load_checkpoint(path)) == ["a", "c"]

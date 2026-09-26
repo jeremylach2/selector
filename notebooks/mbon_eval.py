@@ -41,6 +41,38 @@ from selector.fly.pipeline import FeatureSource, build_feature_matrix, fit_fly
 PLAYS_PATH = Path("data/plays.parquet")
 OUTPUT_PATH = Path("docs/MBON_EVAL.md")
 
+# Hand-written: the feature layout doesn't depend on the eval's results.
+FEATURE_LAYOUT = """\
+## What the feature vector numbers mean
+
+Before the fly ever sees a track, `selector.fly.pipeline.build_feature_matrix` turns it into a fixed-width numeric vector. Every position means the same thing for every track. There is no free-text field anywhere in it, since that's what makes the vector something a projection matrix can act on. The layout, in order:
+
+| Index | Field | Width | Source | Notes |
+|---|---|---|---|---|
+| 0 | `valence` | 1 | Predicted (Step 11) | Float 0-1, straight from `track_features.parquet` |
+| 1 | `intensity` | 1 | Predicted (Step 11) | Float 0-1 |
+| 2-8 | `era` | 7 | Predicted (Step 11) | One-hot over `ERA_VOCAB` = `pre-1970, 1970s, 1980s, 1990s, 2000s, 2010s, 2020s` |
+| 9-18 | `mood_tags` | 10 | Predicted (Step 11) | Multi-hot over `MOOD_VOCAB` (the 10 tags in `schema.MoodTag`); up to 3 can be set |
+| 19-22 | measured audio | 4 | Measured (Step 9), `full` source only | `tempo_scaled, rms_mean_scaled, danceability, harmonic_percussive_ratio_scaled` from `audio_features.parquet`, the same 4 columns the teacher/student saw as "measured" context in Phase 3 |
+| 23 | `has_measured` | 1 | Derived, `full` source only | 1.0 if this track had a matched preview clip (arm C), 0.0 if not (arm A). Zeros in positions 19-22 are indistinguishable from a genuinely low measured value without this bit |
+
+That's 19 dimensions for the `text_only` source (indices 0-18, available for every track) and 24 for `full` (0-23). `lyrical_theme` is the one predicted field left out entirely: it's free text with no controlled vocabulary, so there's no honest fixed-width numeric encoding for it. The `placeholder` source ignores all of this and substitutes 19 dimensions of deterministic noise (`placeholder_embedding`), matched in width to `text_only` so the three sources are comparable in size.
+
+**A real example.** "Can We Kiss Forever?" by Kina (`track_id=58wyJLv6yH1La9NIZPl3ne`, arm C, so it has a matched preview clip) produces this 24-dimensional `full` vector:
+
+```
+index   0     1     2-8 (era, one-hot)   9-18 (mood_tags, multi-hot)        19        20        21      22        23
+value   0.45  0.45  [0,0,0,0,0,1,0]       [0,1,0,0,1,1,0,0,0,0]              0.522     0.203     0.704   0.001     1.0
+field   val.  int.  2010s                 melancholic, romantic, nostalgic   tempo_sc. rms_sc.   dance.  h/p ratio has_measured
+```
+
+Reading it off: the tagger predicted valence 0.45 and intensity 0.45, era 2010s, and the mood tags `melancholic`, `romantic`, `nostalgic`, consistent with its teacher-labelled `lyrical_theme`, "heartbreak and healing after a romantic breakup". The measured half says the track scores mid-low on tempo and loudness (`tempo_scaled=0.52`, `rms_mean_scaled=0.20`), fairly danceable (`danceability=0.70`) and almost entirely percussive by this ratio, and `has_measured=1.0` marks those as real readings rather than zero-fill.
+
+This vector is what `fit_fly` normalises (per-dimension mean/std, the paper's divisive-normalisation step) and feeds through the real FlyWire PN->KC projection. The resulting 2,597-dimensional sparse tag (130 bits set) is the track's fingerprint, persisted in `data/fly_tags.npz`.
+
+**Tried and reverted: lyric-status bits.** After the lyrics fetch was fixed (see `docs/LYRICS.md`), two more inputs were tried: `has_lyrics` and `instrumental`, from lrclib. They made fingerprints more honest for lyric-less tracks without audio (a confirmed instrumental's identical-fingerprint group shrank from about 936 tracks to about 133), but they hurt skip prediction. Holding the wiring fixed (same 26-column width, bits blanked vs. real), the bits cost the full-feature fly 0.052 unseen-track AUC (0.540 to 0.488, below chance) and the text-only fly 0.017 (0.571 to 0.554). For scale, reshuffling the column order of the 24-column layout, which rewires the pooled projection without changing any information, moves unseen AUC by a standard deviation of 0.006 (full) and 0.008 (text-only). The likely mechanism is normalisation: a bit set on 6% of tracks becomes a spike of about +3.9 after z-scoring and dominates those tracks' fingerprints. The status is kept in `track_features.parquet` as `lyrics_status` but not fed to the fly.
+"""
+
 TRAIN_YEARS = (2022, 2023, 2024)
 TEST_YEARS = (2025, 2026)
 LR = 0.05
@@ -197,10 +229,14 @@ def main() -> None:
     print(f"\nOn unseen tracks, full audio+text {beats_or_not} the per-track historical baseline.")
     print(f"Best-scoring feature source on unseen tracks: {best_source}.")
 
-    write_report(results, subsets, beats_or_not, best_source)
+    # Recomputed each run so the write-up below doesn't go stale as audio coverage grows.
+    _, X_full = build_feature_matrix("full")
+    audio_coverage = float((X_full[:, -1] == 1).mean())
+
+    write_report(results, subsets, beats_or_not, best_source, audio_coverage)
 
 
-def write_report(results, subsets, beats_or_not: str, best_source: str) -> None:
+def write_report(results, subsets, beats_or_not: str, best_source: str, audio_coverage: float) -> None:
     placeholder = results["Fly MBON (placeholder embedding)"]
     text_only = results["Fly MBON (text-only features)"]
     full = results["Fly MBON (full audio+text features)"]
@@ -230,6 +266,10 @@ def write_report(results, subsets, beats_or_not: str, best_source: str) -> None:
             "by side, so the effect of real track features on taste prediction is visible "
             "directly rather than asserted."
         ),
+        "",
+        FEATURE_LAYOUT,
+        "",
+        "## Results",
         "",
         "| Method | AUC (all) | AUC (seen tracks) | AUC (unseen tracks) |",
         "|---|---|---|---|",
@@ -273,19 +313,26 @@ def write_report(results, subsets, beats_or_not: str, best_source: str) -> None:
             "the same thing: Step 11 scores label accuracy against ground truth, while this table "
             "scores whether the resulting feature vector's Kenyon-cell overlaps happen to "
             "correlate with taste. The `full` vector reserves 5 of its 24 dimensions for measured "
-            "audio (4 features plus the `has_measured` flag) and only 83.5% of tracks (arm A, no "
-            "audio match) carry a nonzero value there at all -- the flag itself, constant 1.0 or "
+            "audio (4 features plus the `has_measured` flag) and only "
+            f"{audio_coverage:.1%} of tracks (arm C, matched audio) carry a nonzero value there "
+            f"at all; for the other {1 - audio_coverage:.1%} (arm A) all "
+            "five are zero -- the flag itself, constant 1.0 or "
             "0.0 for a whole track, likely soaks up Kenyon-cell capacity that would otherwise "
             "encode the same mood/valence/era information the text-only vector uses at full "
             "weight. A larger Kenyon-cell budget, a fusion scheme other than concatenation, or "
-            "just more matched audio (16.5% coverage today) are the things to try before "
-            "concluding that measured audio doesn't help the fly -- this table shows it doesn't "
-            "help *this* fusion, at *this* coverage, not that it can't."
+            "just more matched audio were the things to try before concluding that measured audio "
+            "doesn't help the fly. The last of those has now been tried: audio coverage was "
+            f"expanded from the top 3,000 tracks by play count to the whole library, taking "
+            f"coverage from 16.5% to {audio_coverage:.1%}, and full audio+text's unseen-AUC "
+            "gap to text-only narrowed from 0.038 to "
+            f"{text_only['unseen'] - full['unseen']:.3f} without closing. That's real evidence "
+            "coverage was part of the story, not the whole of it -- a larger Kenyon-cell budget or "
+            "a different fusion scheme are the remaining things to try."
         ),
         "",
         (
             "**Seen-track performance is not the interesting comparison.** All three sources' "
-            "seen-track AUCs sit well above 0.5, including the placeholder's, because the "
+            "seen-track AUCs sit above 0.5, including the placeholder's, because the "
             "plasticity rule can re-recognise the *exact same* track it was trained on through "
             "tag overlap regardless of what the tag encodes -- the same mechanism the per-track "
             "baseline uses, just as a noisier sparse-hash lookup. That is why the seen-track "

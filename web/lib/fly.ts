@@ -41,12 +41,19 @@ export function hammingTo(cat: Catalog, query: number, rows?: ArrayLike<number>)
   return out;
 }
 
-export type Neighbour = { row: number; distance: number; shared: number };
+// `tied`: how many candidates sit at exactly this distance from the query.
+export type Neighbour = { row: number; distance: number; shared: number; tied: number };
 
 // "Song - 2011 Remaster" and "Song" are the same recording to a listener.
 const baseTitle = (name: string) => name.toLowerCase().split(" - ")[0].replace(/\s*\(.*?\)\s*/g, "").trim();
 
-export function moreLikeThis(cat: Catalog, query: number, k = 10): Neighbour[] {
+// Tracks at equal distance are indistinguishable to the hash. `tieBreak`
+// (scores per catalog row, most important first, each higher-first) orders
+// them; without it they stay in catalog order, which `/watch` relies on for
+// a reproducible shortlist. A score computed from the fingerprint (like
+// mushroom-body valence) can't separate identical fingerprints, so pair it
+// with one that isn't.
+export function moreLikeThis(cat: Catalog, query: number, k = 10, tieBreak: ArrayLike<number>[] = []): Neighbour[] {
   const d = hammingTo(cat, query);
   const title = baseTitle(cat.name[query]);
   const idx: number[] = [];
@@ -55,8 +62,16 @@ export function moreLikeThis(cat: Catalog, query: number, k = 10): Neighbour[] {
   for (let i = 0; i < cat.size; i++) {
     if (i !== query && !(cat.artist[i] === cat.artist[query] && baseTitle(cat.name[i]) === title)) idx.push(i);
   }
-  idx.sort((a, b) => d[a] - d[b]);
-  return idx.slice(0, k).map((row) => ({ row, distance: d[row], shared: cat.kActive - d[row] / 2 }));
+  idx.sort((a, b) => {
+    if (d[a] !== d[b]) return d[a] - d[b];
+    for (const key of tieBreak) if (key[a] !== key[b]) return key[b] - key[a];
+    return 0;
+  });
+  const tied = new Map<number, number>();
+  for (const i of idx) tied.set(d[i], (tied.get(d[i]) ?? 0) + 1);
+  return idx
+    .slice(0, k)
+    .map((row) => ({ row, distance: d[row], shared: cat.kActive - d[row] / 2, tied: tied.get(d[row]) ?? 1 }));
 }
 
 // Same constants as `selector.fly.pipeline` (MBON_LR, MBON_DECAY).

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Literal
 
 import httpx
 import pandas as pd
@@ -25,39 +26,86 @@ from selector.warehouse.queries import _connect
 LYRICS_DIR = Path("data/lyrics")
 LRCLIB_SEARCH_URL = "https://lrclib.net/api/search"
 REQUEST_DELAY_SECONDS = 0.3
+MAX_ATTEMPTS = 3
+RETRY_BACKOFF_SECONDS = 2.0
+
+# What the cache knows about a track's words. "unknown" covers both songs
+# lrclib doesn't have and instrumentals it hasn't flagged: an empty lyrics
+# file is not evidence that a track has no vocals.
+LyricsStatus = Literal["lyrics", "instrumental", "unknown"]
+
+
+class LyricsFetchError(Exception):
+    """lrclib couldn't be reached. Never cached, so a rerun retries it."""
 
 
 def _lyrics_cache_path(track_id: str) -> Path:
     return LYRICS_DIR / f"{track_id}.txt"
 
 
-def fetch_lyrics(client: httpx.Client, track_id: str, title: str, artist: str) -> str | None:
+def _instrumental_marker_path(track_id: str) -> Path:
+    return LYRICS_DIR / f"{track_id}.instrumental"
+
+
+def lyrics_status(track_id: str) -> LyricsStatus | None:
+    """Read a track's status from the cache. None means it was never fetched."""
+    cache_path = _lyrics_cache_path(track_id)
+    if not cache_path.exists():
+        return None
+    if cache_path.stat().st_size:
+        return "lyrics"
+    return "instrumental" if _instrumental_marker_path(track_id).exists() else "unknown"
+
+
+def _search(client: httpx.Client, title: str, artist: str) -> list[dict]:
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        try:
+            resp = client.get(LRCLIB_SEARCH_URL, params={"track_name": title, "artist_name": artist})
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code < 500 and e.response.status_code != 429:
+                raise LyricsFetchError(str(e)) from e
+            last = e
+        except httpx.HTTPError as e:
+            last = e
+        if attempt < MAX_ATTEMPTS:
+            time.sleep(RETRY_BACKOFF_SECONDS * attempt)
+    raise LyricsFetchError(str(last)) from last
+
+
+def fetch_lyrics(
+    client: httpx.Client, track_id: str, title: str, artist: str, refresh: bool = False
+) -> str | None:
     """Look up plain lyrics for a track, caching to disk by track_id.
 
-    Returns None (and caches an empty marker file) when lrclib has no
-    match — a track with no lyrics is a normal outcome, not a retry target.
+    Returns None when lrclib answered without lyrics, and caches that as an
+    empty file, plus an `.instrumental` marker when lrclib flags the track
+    as instrumental. A request that fails even after retries raises
+    `LyricsFetchError` and caches nothing: an outage must not be remembered
+    as "this song has no lyrics". `refresh` re-queries a cached empty result.
     """
     cache_path = _lyrics_cache_path(track_id)
     if cache_path.exists():
         text = cache_path.read_text(encoding="utf-8")
-        return text if text else None
+        if text or not refresh:
+            return text if text else None
 
     try:
-        resp = client.get(LRCLIB_SEARCH_URL, params={"track_name": title, "artist_name": artist})
-        resp.raise_for_status()
-        results = resp.json()
-    except httpx.HTTPError:
-        results = []
+        results = _search(client, title, artist)
+    finally:
+        time.sleep(REQUEST_DELAY_SECONDS)
 
-    lyrics = None
-    for result in results:
-        if result.get("plainLyrics"):
-            lyrics = result["plainLyrics"]
-            break
+    lyrics = next((r["plainLyrics"] for r in results if r.get("plainLyrics")), None)
+    instrumental = lyrics is None and any(r.get("instrumental") for r in results)
 
     LYRICS_DIR.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(lyrics or "", encoding="utf-8")
-    time.sleep(REQUEST_DELAY_SECONDS)
+    marker = _instrumental_marker_path(track_id)
+    if instrumental:
+        marker.touch()
+    else:
+        marker.unlink(missing_ok=True)
     return lyrics
 
 
