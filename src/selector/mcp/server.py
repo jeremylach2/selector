@@ -213,22 +213,24 @@ def rediscovery_candidates(dormant_months: int = 6, min_past_plays: int = 10) ->
 
 
 @server.tool()
-def wrapped_report(top_n: int = 5, save_html: bool = False) -> str:
-    """Get a Spotify-Wrapped-style report over the full listening history:
-    total hours, top artists/tracks/albums, an artist "sprint" (monthly
-    play counts for every artist who ever cracked a top spot), peak
-    listening hour, and skip offenders. `top_n` controls how many entries
-    each ranked card keeps. This is the warehouse-only slice of the report —
-    it doesn't need audio features or the fly brain, so it always reflects
-    the full library. Set `save_html` to also write a standalone HTML story
+def wrapped_report(top_n: int = 5, save_html: bool = False, year: int | None = None) -> str:
+    """Get a Spotify-Wrapped-style report: total hours, top
+    artists/tracks/albums, the artist race, peak listening hour, skip
+    offenders, listening age and decade mix, fly-brain taste clusters,
+    hidden gems, and a listening archetype. Covers the full history by
+    default, or one calendar year (UTC) if `year` is given. `top_n` controls
+    how many entries each ranked card keeps. Cards whose inputs are missing
+    (release years, fly-brain fingerprints) are left out rather than
+    failing the report. Set `save_html` to also write a standalone HTML story
     to `data/wrapped_report.html` alongside the JSON at
     `data/wrapped_report.json`.
     """
     db_path = _db_path()
     if not db_path.exists():
         return _missing_db_message(db_path)
+    window = wrapped.Window.year(year) if year is not None else wrapped.ALL_TIME
     try:
-        report = wrapped.build_report(top_n=top_n, db_path=db_path)
+        report = wrapped.build_report(top_n=top_n, db_path=db_path, window=window)
     except Exception as exc:  # noqa: BLE001 - surfaced to the model as text, not a crash
         return f"Report failed: {exc}"
 

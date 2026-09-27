@@ -1,10 +1,14 @@
 """Wrapped-style report cards over the Selector warehouse.
 
-Implements the "v1 — warehouse only" slice of the Wrapped extension plan
-(see `Selector - Project Extension Plan.md`, stages 0-1 and 6-8): pure local
-SQL, no network calls, no dependency on the vibe tagger or fly brain. Later
-slices (listening age, taste clusters, hidden gems, archetype) need album
-release years and/or trained Components B/C and are not implemented here.
+Implements the "v1 — warehouse only" and "v1.5 — metadata" slices of the
+Wrapped extension plan (see `Selector - Project Extension Plan.md`, stages
+0-2 and 6-8): local SQL plus the cached album release years from
+`selector.audio.metadata`, no network calls. The v1.5 cards (listening age,
+decade histogram) are tier B and carry a `coverage` block, since only albums
+with a resolved release year count towards them. The v2 cards (taste
+clusters, hidden gems) are tier A: they read the fly brain's fingerprints
+for every track via `selector.fly.clusters`. The archetype card comes last
+and cites the clusters.
 
 `build_report()` assembles the versioned report object; each `_card_*`
 function is a pure function that returns a card dict or `None` if it can't
@@ -14,23 +18,40 @@ returns None rather than raising — the assembler drops it").
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 
+from selector.audio.metadata import DEFAULT_OUTPUT_PATH as RELEASE_YEARS_PATH
 from selector.warehouse import queries
-from selector.warehouse.build import DEFAULT_DB_PATH
+from selector.warehouse.build import DEFAULT_DB_PATH, build_window_warehouse
 
-SCHEMA_VERSION = "1.0"
+# 2.0: reports carry a window id/label (all-time or a calendar year), the
+# artist_sprint value is a dense month x artist matrix for a chart race, and
+# time_of_day carries all 24 hourly counts in the report's time zone.
+# Mirrored in web/lib/wrapped.ts.
+SCHEMA_VERSION = "2.0"
+
+WINDOW_DB_DIR = Path("data/wrapped_windows")
+
+# Every clock-dependent number in the report (hour of day, month buckets,
+# year boundaries, window dates) is in the listener's own zone. US Central,
+# so it follows CST/CDT through daylight saving.
+REPORT_TZ = "America/Chicago"
+REPORT_TZ_LABEL = "Central"
+DEFAULT_EXPORT_DIR = Path("web/public/wrapped")
 
 # Fixed per the plan's "Card order is fixed in config, not emergent" rule:
 # open with volume, then rankings, then the artist sprint and listening
-# habits. Later slices (listening age, taste clusters, archetype) slot in
-# after `skip_offenders` and before the archetype card once they exist.
+# habits, then listening age. Later slices (taste clusters, archetype) slot
+# in after `decade_histogram`, with the archetype card last.
 CARD_ORDER = [
     "total_hours",
     "top_artists",
@@ -39,7 +60,43 @@ CARD_ORDER = [
     "artist_sprint",
     "time_of_day",
     "skip_offenders",
+    "listening_age",
+    "decade_histogram",
+    "taste_clusters",
+    "hidden_gems",
+    "archetype",
 ]
+
+# "Old" for the listening-age evidence line means released at least this many
+# years before the window's last play.
+OLD_RELEASE_YEARS = 10
+
+# A hidden gem: played at least once but at most this many times, never
+# skipped, and scored highly by the fly brain's learned taste. One per artist.
+GEM_MAX_PLAYS = 2
+GEM_COUNT = 5
+
+# Archetype rules: (id, label, metric, direction, threshold, evidence template).
+# These are fixed, documented constants chosen by judgment, not fitted: they
+# were sanity-checked against one listener's history, which is all the data
+# this project has, so they make no claim about how anyone compares to other
+# listeners. The label is the rule the listener clears by the widest margin
+# (value / threshold, inverted for "<=" rules); if none clear, "The All-Rounder".
+ARCHETYPES = [
+    ("explorer", "The Explorer", "discovery_ratio", ">=", 0.40,
+     "{v:.0%} of your plays were first listens (Explorer: 40%+)"),
+    ("loyalist", "The Loyalist", "top1_share", ">=", 0.25,
+     "your top 1% of tracks take {v:.0%} of your plays (Loyalist: 25%+)"),
+    ("time_traveller", "The Time Traveller", "old_share", ">=", 0.50,
+     "{v:.0%} of your dated plays are from albums 20+ years old (Time Traveller: 50%+)"),
+    ("specialist", "The Specialist", "cluster_evenness", "<=", 0.70,
+     "your plays spread across taste clusters at {v:.0%} evenness (Specialist: 70% or less)"),
+    ("restless", "The Restless", "skip_rate", ">=", 0.25,
+     "{v:.0%} of your plays end in a skip (Restless: 25%+)"),
+]
+ARCHETYPE_OLD_YEARS = 20
+# A month needs this many plays to be named in a "your most ... month" line.
+ARCHETYPE_MIN_MONTH_PLAYS = 100
 
 
 def freeze_config(top_n: int = 5, **overrides: Any) -> dict[str, Any]:
@@ -51,14 +108,27 @@ def freeze_config(top_n: int = 5, **overrides: Any) -> dict[str, Any]:
     return {**config, "config_hash": config_hash}
 
 
+def _local_date(ts: Any) -> str | None:
+    if pd.isna(ts):
+        return None
+    ts = pd.Timestamp(ts)
+    ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts
+    return ts.tz_convert(REPORT_TZ).strftime("%Y-%m-%d")
+
+
+def _clock_label(hour: int) -> str:
+    """15 -> "3 PM"."""
+    return f"{hour % 12 or 12} {'AM' if hour < 12 else 'PM'}"
+
+
 def _warehouse_totals(db_path: Path) -> dict[str, Any]:
     df = queries.warehouse_summary(db_path=db_path)
     row = df.iloc[0]
     earliest, latest = row["earliest_play"], row["latest_play"]
     return {
         "window": {
-            "from": str(earliest)[:10] if pd.notna(earliest) else None,
-            "to": str(latest)[:10] if pd.notna(latest) else None,
+            "from": _local_date(earliest),
+            "to": _local_date(latest),
         },
         "totals": {
             "plays": int(row["total_plays"]),
@@ -144,18 +214,27 @@ def _card_artist_sprint(df: pd.DataFrame) -> dict[str, Any] | None:
     finals = df.sort_values("month").groupby("artist", as_index=False).tail(1)
     finals = finals.sort_values("cumulative_plays", ascending=False)
     leader = finals.iloc[0]
+    # A dense month x artist matrix of cumulative plays -- the frames of a
+    # chart race. Every calendar month in range appears, and an artist's
+    # total carries forward through months they weren't played.
+    months = pd.date_range(df["month"].min(), df["month"].max(), freq="MS")
+    artists = finals["artist"].tolist()
+    cumulative = (
+        df.pivot_table(index="month", columns="artist", values="cumulative_plays", aggfunc="max")
+        .reindex(index=months, columns=artists)
+        .ffill()
+        .fillna(0)
+        .astype(int)
+    )
     return {
         "id": "artist_sprint",
-        "headline": f"{leader['artist']} led your longest artist sprint",
-        "value": [
-            {
-                "artist": r.artist,
-                "month": str(r.month.date()),
-                "play_count": int(r.play_count),
-                "cumulative_plays": int(r.cumulative_plays),
-            }
-            for r in df.itertuples()
-        ],
+        "headline": f"{leader['artist']} won your artist race",
+        "value": {
+            "months": [m.strftime("%Y-%m") for m in months],
+            "artists": artists,
+            # cumulative[m][a]: artist a's running play total at the end of month m.
+            "cumulative": cumulative.to_numpy().tolist(),
+        },
         "sublabel": f"{len(finals)} artists ever cracked a monthly top spot",
         "evidence": [
             f"{r.artist}: {int(r.cumulative_plays):,} plays total"
@@ -165,19 +244,32 @@ def _card_artist_sprint(df: pd.DataFrame) -> dict[str, Any] | None:
 
 
 def _card_time_of_day(db_path: Path) -> dict[str, Any] | None:
-    clock = queries.listening_clock(db_path=db_path)
-    if clock.empty:
+    # Local hour, not the warehouse's `hour_utc` column: "3 PM" should mean
+    # 3 PM where the listening happened, through daylight saving.
+    with queries._connect(db_path) as con:
+        by_hour = con.execute(
+            f"""
+            SELECT hour(ts AT TIME ZONE '{REPORT_TZ}') AS hour, COUNT(*) AS play_count
+            FROM plays GROUP BY 1
+            """
+        ).df()
+    if by_hour.empty:
         return None
-    by_hour = clock.groupby("hour_utc", as_index=False)["play_count"].sum()
-    by_hour = by_hour.sort_values("play_count", ascending=False)
+    hours = by_hour.set_index("hour")["play_count"].reindex(range(24), fill_value=0)
+    by_hour = by_hour.sort_values(["play_count", "hour"], ascending=[False, True])
     peak = by_hour.iloc[0]
     return {
         "id": "time_of_day",
-        "headline": f"You listen most around {int(peak['hour_utc']):02d}:00 UTC",
-        "value": int(peak["hour_utc"]),
-        "sublabel": f"{int(peak['play_count']):,} plays in that hour, all-time",
+        "headline": f"You listen most around {_clock_label(int(peak['hour']))} {REPORT_TZ_LABEL}",
+        "value": {
+            "timezone": REPORT_TZ,
+            "timezone_label": REPORT_TZ_LABEL,
+            "peak_hour": int(peak["hour"]),
+            "by_hour": hours.astype(int).tolist(),
+        },
+        "sublabel": f"{int(peak['play_count']):,} plays in that hour",
         "evidence": [
-            f"{int(r.hour_utc):02d}:00 UTC — {int(r.play_count):,} plays"
+            f"{_clock_label(int(r.hour))} {REPORT_TZ_LABEL} — {int(r.play_count):,} plays"
             for r in by_hour.head(3).itertuples()
         ],
     }
@@ -207,18 +299,415 @@ def _card_skip_offenders(df: pd.DataFrame) -> dict[str, Any] | None:
     }
 
 
-def build_report(top_n: int = 5, db_path: Path = DEFAULT_DB_PATH) -> dict[str, Any]:
-    """Stages 1 + 6 + 7: aggregate the warehouse, build every v1 card, and
+def track_release_years(
+    db_path: Path = DEFAULT_DB_PATH, release_years_path: Path = RELEASE_YEARS_PATH
+) -> pd.DataFrame:
+    """Every warehouse track with its album's release year, joined on the same
+    normalised `(artist, album)` key `selector.audio.metadata` cached them
+    under. Tracks whose album has no resolved year have a null
+    `release_year`, so callers can report coverage against the full library.
+    Returns an empty frame if the release-year cache hasn't been built.
+    """
+    columns = ["track_id", "name", "artist", "album", "play_count", "release_year"]
+    if not Path(release_years_path).exists():
+        return pd.DataFrame(columns=columns)
+
+    years = pd.read_parquet(release_years_path, columns=["album_key", "release_year"])
+    years = years.dropna(subset=["release_year"]).drop_duplicates("album_key")
+    with queries._connect(db_path) as con:
+        tracks = con.execute("SELECT track_id, name, artist, album, play_count FROM tracks").df()
+    tracks["album_key"] = [
+        queries.normalize_album_key(artist or "", album or "")
+        for artist, album in zip(tracks["artist"], tracks["album"])
+    ]
+    merged = tracks.merge(years, on="album_key", how="left")
+    merged["release_year"] = merged["release_year"].astype("Int64")
+    return merged[columns]
+
+
+def _tier_b_coverage(df: pd.DataFrame, dated: pd.DataFrame) -> dict[str, Any]:
+    return {
+        "tier": "B",
+        "tracks_used": len(dated),
+        "of": len(df),
+        "plays_used": int(dated["play_count"].sum()),
+        "plays_of": int(df["play_count"].sum()),
+    }
+
+
+def _card_listening_age(df: pd.DataFrame, window_to: str | None) -> dict[str, Any] | None:
+    dated = df[df["release_year"].notna() & (df["play_count"] > 0)]
+    if dated.empty:
+        return None
+    # Play-weighted median rather than mean: a mean is dominated by the top
+    # 50 tracks and dragged late by remaster and compilation dates (plan's
+    # "Listening age" row).
+    years = np.repeat(dated["release_year"].to_numpy(int), dated["play_count"].to_numpy(int))
+    median_year = int(np.median(years))
+
+    end_year = int(window_to[:4]) if window_to else int(years.max())
+    cutoff = end_year - OLD_RELEASE_YEARS
+    oldest = dated.sort_values(["release_year", "play_count"], ascending=[True, False]).iloc[0]
+    coverage = _tier_b_coverage(df, dated)
+    return {
+        "id": "listening_age",
+        "headline": f"You listen like it's {median_year}",
+        "value": median_year,
+        "sublabel": "median album release year, play-weighted",
+        "coverage": coverage,
+        "evidence": [
+            f"{(years < cutoff).mean():.0%} of your dated plays are from before {cutoff}",
+            f"oldest: {oldest['artist']}, \"{oldest['album']}\" ({int(oldest['release_year'])})",
+            (
+                f"dated from {coverage['plays_used']:,} of {coverage['plays_of']:,} plays "
+                f"({coverage['tracks_used']:,} tracks)"
+            ),
+        ],
+    }
+
+
+def _card_decade_histogram(df: pd.DataFrame) -> dict[str, Any] | None:
+    dated = df[df["release_year"].notna() & (df["play_count"] > 0)]
+    if dated.empty:
+        return None
+    by_decade = (
+        dated.assign(decade=(dated["release_year"].astype(int) // 10) * 10)
+        .groupby("decade", as_index=False)["play_count"]
+        .sum()
+        .sort_values("decade")
+    )
+    total = by_decade["play_count"].sum()
+    by_decade["share"] = by_decade["play_count"] / total
+    ranked = by_decade.sort_values("play_count", ascending=False)
+    top = ranked.iloc[0]
+    return {
+        "id": "decade_histogram",
+        "headline": f"The {int(top['decade'])}s own {top['share']:.0%} of your plays",
+        "value": [
+            {
+                "decade": int(r.decade),
+                "play_count": int(r.play_count),
+                "share": round(float(r.share), 3),
+            }
+            for r in by_decade.itertuples()
+        ],
+        "sublabel": f"{len(by_decade)} decades represented",
+        "coverage": _tier_b_coverage(df, dated),
+        "evidence": [
+            f"{int(r.decade)}s — {r.share:.0%} ({int(r.play_count):,} plays)"
+            for r in ranked.head(3).itertuples()
+        ],
+    }
+
+
+def load_fly_base() -> dict[str, Any]:
+    """Stages 4-5, the window-independent part: fingerprints, the cached
+    taste clusters, and every track's fly-brain taste score (the production
+    mushroom body's approach-minus-avoid drive, as `fly_score` computes it,
+    trained on the full history). Clusters are fitted over the whole
+    library, so a vibe means the same thing in every yearly report. Raises
+    if the fly artefacts are missing; `build_report` catches that and drops
+    the v2 cards.
+    """
+    from selector.fly import clusters as fly_clusters
+    from selector.fly.pipeline import load_tags, train_production_mbon
+
+    taste = fly_clusters.load_or_fit_clusters()
+    track_ids, tags = load_tags()
+    mbon = train_production_mbon(track_ids, tags)
+    scores = tags.astype(np.float64) @ (mbon.w_approach - mbon.w_avoid)
+    return {
+        "clusters": taste,
+        "features": fly_clusters.track_feature_frame(),
+        "scores": pd.DataFrame({"track_id": track_ids, "fly_score": scores, "cluster": taste.labels}),
+    }
+
+
+def fly_for_window(base: dict[str, Any], db_path: Path) -> dict[str, Any]:
+    """Join the fly base onto one window's play counts: cluster play shares
+    and gem candidates come from the plays in that window only."""
+    from selector.fly import cluster_names
+    from selector.fly import clusters as fly_clusters
+
+    taste = base["clusters"]
+    with queries._connect(db_path) as con:
+        tracks = con.execute(
+            "SELECT track_id, name, artist, play_count, skip_rate FROM tracks"
+        ).df()
+    summary = fly_clusters.cluster_summary(
+        taste, tracks[["track_id", "name", "artist", "play_count"]], base["features"]
+    )
+    summary["name"] = [
+        cluster_names.llm_name_for(c, built, taste.cache_key) or built
+        for c, built in zip(summary["cluster"], summary["built_name"])
+    ]
+    per_track = base["scores"].merge(tracks, on="track_id", how="left")
+    per_track["has_measured"] = (
+        per_track["track_id"].map(base["features"]["has_measured"]).fillna(False).astype(bool)
+    )
+    return {"clusters": taste, "summary": summary, "tracks": per_track}
+
+
+def _tier_a_coverage(per_track: pd.DataFrame) -> dict[str, Any]:
+    played = per_track[per_track["play_count"].fillna(0) > 0]
+    return {
+        "tier": "A",
+        "tracks_used": len(played),
+        "of": len(played),
+        "measured": int(played["has_measured"].sum()),
+    }
+
+
+def _card_taste_clusters(fly: dict[str, Any]) -> dict[str, Any] | None:
+    summary = fly["summary"]
+    if summary.empty:
+        return None
+    top = summary.iloc[0]
+    return {
+        "id": "taste_clusters",
+        "headline": f"Your biggest vibe: {top['name']}",
+        "value": [
+            {
+                "name": r.name,
+                "built_name": r.built_name,
+                "play_share": round(float(r.play_share), 3),
+                "track_count": int(r.track_count),
+                "measured_share": round(float(r.measured_share), 3),
+                "top_artists": list(r.top_artists),
+            }
+            for r in summary.itertuples()
+        ],
+        "sublabel": (
+            f"{len(summary)} taste clusters in your fly-brain fingerprints; "
+            f"this one holds {top['play_share']:.0%} of your plays"
+        ),
+        "coverage": _tier_a_coverage(fly["tracks"]),
+        "evidence": [
+            f"{r.name}: {r.play_share:.0%} of plays ({', '.join(r.top_artists[:2])})"
+            for r in summary.head(3).itertuples()
+        ],
+    }
+
+
+def _card_hidden_gems(fly: dict[str, Any]) -> dict[str, Any] | None:
+    tracks = fly["tracks"].copy()
+    tracks["score_rank"] = tracks["fly_score"].rank(ascending=False, method="min").astype(int)
+    tracks["score_pct"] = tracks["fly_score"].rank(pct=True)
+    names = dict(zip(fly["summary"]["cluster"], fly["summary"]["name"]))
+    candidates = tracks[
+        tracks["play_count"].between(1, GEM_MAX_PLAYS) & (tracks["skip_rate"] == 0)
+    ].sort_values(["fly_score", "track_id"], ascending=[False, True])
+    # One per artist, but no per-cluster quota: the mushroom body's highest
+    # scores sit almost entirely in one cluster (on the real data, ~1,090 of
+    # the top 1,100), so forcing variety across clusters swaps a #4 gem for a
+    # #1,036 one. The concentration is itself the finding.
+    gems = candidates.drop_duplicates("artist").head(GEM_COUNT)
+    if gems.empty:
+        return None
+    top = gems.iloc[0]
+    plays = int(top["play_count"])
+    return {
+        "id": "hidden_gems",
+        "headline": f"Hidden gem: \"{top['name']}\" by {top['artist']}",
+        "value": [
+            {
+                "track_id": r.track_id,
+                "name": r.name,
+                "artist": r.artist,
+                "play_count": int(r.play_count),
+                "fly_score_rank": int(r.score_rank),
+                "fly_score_percentile": round(float(r.score_pct), 3),
+                "cluster": names.get(r.cluster),
+            }
+            for r in gems.itertuples()
+        ],
+        "sublabel": (
+            f"the fly brain ranks it #{int(top['score_rank']):,} of {len(tracks):,} for your taste, "
+            f"but you've played it {'once' if plays == 1 else f'{plays} times'}"
+        ),
+        "coverage": _tier_a_coverage(fly["tracks"]),
+        "evidence": [
+            f"\"{r.name}\" — {r.artist} (#{int(r.score_rank):,}, {names.get(r.cluster, 'unclustered')})"
+            for r in gems.head(3).itertuples()
+        ],
+    }
+
+
+def archetype_metrics(
+    db_path: Path,
+    fly: dict[str, Any] | None,
+    release_years: pd.DataFrame,
+    window_to: str | None,
+    window: Window | None = None,
+) -> dict[str, Any]:
+    """The values the archetype rules test, plus the per-month discovery
+    ratios used for the self-comparison evidence line. A metric whose inputs
+    are missing is simply absent, and its rule can't fire.
+
+    `db_path` is always the *full* warehouse: a first listen means the first
+    play in your whole history, so a 2022 favourite replayed in 2024 doesn't
+    count as a 2024 discovery. Only the plays inside `window` are scored.
+    """
+    with queries._connect(db_path) as con:
+        plays = con.execute(
+            "SELECT ts, track_id, verdict FROM plays WHERE track_id IS NOT NULL ORDER BY ts"
+        ).df()
+    plays["first"] = ~plays["track_id"].duplicated()
+    if window is not None:
+        plays = plays[window.contains(plays["ts"])]
+    if plays.empty:
+        return {}
+    first = plays["first"]
+    counts = plays["track_id"].value_counts()
+    top1 = max(1, len(counts) // 100)
+    metrics: dict[str, Any] = {
+        "discovery_ratio": float(first.mean()),
+        "top1_share": float(counts.head(top1).sum() / len(plays)),
+        "skip_rate": float((plays["verdict"] < 0).mean()),
+    }
+
+    month = plays["ts"].dt.tz_convert(REPORT_TZ).dt.strftime("%Y-%m")
+    monthly = pd.DataFrame({"month": month, "first": first}).groupby("month")["first"].agg(["size", "mean"])
+    metrics["monthly_discovery"] = monthly[monthly["size"] >= ARCHETYPE_MIN_MONTH_PLAYS]["mean"]
+
+    dated = release_years[release_years["release_year"].notna() & (release_years["play_count"] > 0)]
+    if not dated.empty and window_to:
+        cutoff = int(window_to[:4]) - ARCHETYPE_OLD_YEARS
+        old = dated.loc[dated["release_year"].astype(int) < cutoff, "play_count"].sum()
+        metrics["old_share"] = float(old / dated["play_count"].sum())
+
+    if fly is not None:
+        shares = fly["summary"]["play_share"].to_numpy()
+        shares = shares[shares > 0]
+        if len(shares) > 1:
+            metrics["cluster_evenness"] = float(-(shares * np.log(shares)).sum() / np.log(len(shares)))
+    return metrics
+
+
+def _card_archetype(metrics: dict[str, Any], fly: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not metrics:
+        return None
+    passing = []
+    for rule_id, label, metric, direction, threshold, template in ARCHETYPES:
+        value = metrics.get(metric)
+        if value is None:
+            continue
+        if direction == ">=" and value >= threshold:
+            passing.append((value / threshold, rule_id, label, template.format(v=value)))
+        elif direction == "<=" and 0 < value <= threshold:
+            passing.append((threshold / value, rule_id, label, template.format(v=value)))
+
+    evidence: list[str] = []
+    if passing:
+        _margin, rule_id, label, line = max(passing)
+        evidence.append(line)
+    else:
+        rule_id, label = "all_rounder", "The All-Rounder"
+        evidence.append("no single habit clears an archetype threshold")
+
+    monthly = metrics.get("monthly_discovery")
+    if monthly is not None and len(monthly):
+        best = pd.Period(monthly.idxmax(), freq="M")
+        evidence.append(
+            f"your most adventurous month was {best.strftime('%B %Y')} "
+            f"({monthly.max():.0%} first listens)"
+        )
+    if fly is not None and not fly["summary"].empty:
+        evidence.append(f"anchored in your biggest vibe, {fly['summary'].iloc[0]['name']}")
+
+    return {
+        "id": "archetype",
+        "headline": f"You're {label}",
+        "value": rule_id,
+        "sublabel": "fixed, documented thresholds on your own habits, not a ranking against other listeners",
+        "metrics": {
+            k: round(v, 3) for k, v in metrics.items() if isinstance(v, float)
+        },
+        "evidence": evidence[:3],
+    }
+
+
+@dataclass(frozen=True)
+class Window:
+    """A report's time window: `[start, end)` as local dates in `REPORT_TZ`,
+    either end open."""
+
+    id: str
+    label: str
+    start: str | None = None
+    end: str | None = None
+
+    @classmethod
+    def year(cls, year: int) -> Window:
+        return cls(str(year), str(year), f"{year}-01-01", f"{year + 1}-01-01")
+
+    def contains(self, ts: pd.Series) -> pd.Series:
+        mask = pd.Series(True, index=ts.index)
+        if self.start:
+            mask &= ts >= pd.Timestamp(self.start, tz=REPORT_TZ)
+        if self.end:
+            mask &= ts < pd.Timestamp(self.end, tz=REPORT_TZ)
+        return mask
+
+
+ALL_TIME = Window("all", "All time")
+
+
+def available_windows(db_path: Path = DEFAULT_DB_PATH) -> list[Window]:
+    """All-time first, then one window per calendar year with any plays."""
+    with queries._connect(db_path) as con:
+        years = [
+            int(y)
+            for (y,) in con.execute(
+                f"SELECT DISTINCT year(ts AT TIME ZONE '{REPORT_TZ}') AS y FROM plays ORDER BY y"
+            ).fetchall()
+        ]
+    return [ALL_TIME, *(Window.year(y) for y in years)]
+
+
+def build_report(
+    top_n: int = 5,
+    db_path: Path = DEFAULT_DB_PATH,
+    release_years_path: Path = RELEASE_YEARS_PATH,
+    include_fly: bool = True,
+    window: Window = ALL_TIME,
+    fly_base: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Stages 1-2 + 4-7: aggregate the warehouse, join cached release years,
+    load the fly-brain fingerprints and taste clusters, build every card, and
     assemble the versioned report object. Raises FileNotFoundError if the
     warehouse hasn't been built yet; never raises for an individual card
-    failing — that card is just dropped.
-    """
-    db_path = Path(db_path)
-    if not db_path.exists():
-        raise FileNotFoundError(f"No warehouse found at {db_path}")
+    failing — that card is just dropped (both v1.5 cards when the
+    release-year cache is missing, the cluster and gem cards when the fly
+    artefacts are). The archetype card survives either, with fewer rules
+    able to fire. No network calls: cluster names written by a model are
+    read from cache only (see `selector.fly.cluster_names`).
 
-    config = freeze_config(top_n=top_n)
+    Every window, all-time included, gets a throwaway warehouse over just
+    that window's plays (`build_window_warehouse`) with month buckets cut in
+    `REPORT_TZ`, so every card is computed on the window alone and on the
+    listener's clock. `fly_base` lets a caller building several windows
+    share one `load_fly_base()` rather than retraining the mushroom body.
+    """
+    from selector.fly.clusters import CLUSTER_CONFIG
+
+    full_db = Path(db_path)
+    if not full_db.exists():
+        raise FileNotFoundError(f"No warehouse found at {full_db}")
+    db_path = build_window_warehouse(
+        full_db, WINDOW_DB_DIR / f"{window.id}.duckdb", window.start, window.end, REPORT_TZ
+    )
+
+    config = freeze_config(
+        top_n=top_n,
+        timezone=REPORT_TZ,
+        old_release_years=OLD_RELEASE_YEARS,
+        clusters=CLUSTER_CONFIG,
+        gems={"max_plays": GEM_MAX_PLAYS, "count": GEM_COUNT},
+        archetypes=[list(rule[:5]) for rule in ARCHETYPES],
+    )
     totals = _warehouse_totals(db_path)
+    release_years = track_release_years(db_path, release_years_path)
 
     cards_by_id = {
         "total_hours": _card_total_hours(totals),
@@ -230,17 +719,84 @@ def build_report(top_n: int = 5, db_path: Path = DEFAULT_DB_PATH) -> dict[str, A
         ),
         "time_of_day": _card_time_of_day(db_path),
         "skip_offenders": _card_skip_offenders(queries.skip_offenders(db_path=db_path)),
+        "listening_age": _card_listening_age(release_years, totals["window"]["to"]),
+        "decade_histogram": _card_decade_histogram(release_years),
     }
+
+    fly: dict[str, Any] | None = None
+    if include_fly:
+        try:
+            fly = fly_for_window(fly_base or load_fly_base(), db_path)
+        except (FileNotFoundError, OSError, KeyError, ValueError):
+            fly = None
+    if fly is not None:
+        cards_by_id["taste_clusters"] = _card_taste_clusters(fly)
+        cards_by_id["hidden_gems"] = _card_hidden_gems(fly)
+    cards_by_id["archetype"] = _card_archetype(
+        archetype_metrics(full_db, fly, release_years, totals["window"]["to"], window), fly
+    )
     cards = [cards_by_id[cid] for cid in CARD_ORDER if cards_by_id.get(cid) is not None]
 
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "config_hash": config["config_hash"],
-        "window": totals["window"],
+        "window": {"id": window.id, "label": window.label, **totals["window"]},
         "totals": totals["totals"],
         "cards": cards,
     }
+
+
+def export_reports(
+    out_dir: Path, top_n: int = 5, db_path: Path = DEFAULT_DB_PATH
+) -> list[dict[str, Any]]:
+    """Write one report per available window to `out_dir/<id>.json`, plus
+    `out_dir/index.json` listing them all-time first. This is the static
+    data the web story UI (`web/app/wrapped`) reads."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        base = load_fly_base()
+    except (FileNotFoundError, OSError, KeyError, ValueError):
+        base = None
+    index = []
+    for window in available_windows(db_path):
+        report = build_report(
+            top_n=top_n, db_path=db_path, window=window, fly_base=base, include_fly=base is not None
+        )
+        (out_dir / f"{window.id}.json").write_text(
+            json.dumps(report, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+        )
+        index.append(
+            {
+                "id": window.id,
+                "label": window.label,
+                "from": report["window"]["from"],
+                "to": report["window"]["to"],
+                "plays": report["totals"]["plays"],
+            }
+        )
+        print(f"  {window.label}: {len(report['cards'])} cards, {report['totals']['plays']:,} plays")
+    (out_dir / "index.json").write_text(
+        json.dumps({"schema_version": SCHEMA_VERSION, "windows": index}, indent=2), encoding="utf-8"
+    )
+    return index
+
+
+def _coverage_note(card: dict[str, Any]) -> str | None:
+    cov = card.get("coverage")
+    if not cov:
+        return None
+    if cov.get("plays_of"):
+        share = cov["plays_used"] / cov["plays_of"]
+        return f"Tier {cov['tier']} · covers {share:.0%} of plays"
+    if "measured" in cov and cov["tracks_used"]:
+        share = cov["measured"] / cov["tracks_used"]
+        return (
+            f"Tier {cov['tier']} · all {cov['tracks_used']:,} tracks · "
+            f"{share:.0%} with measured audio, the rest predicted features only"
+        )
+    return f"Tier {cov['tier']} · {cov['tracks_used']:,} of {cov['of']:,} tracks"
 
 
 def render_markdown(report: dict[str, Any]) -> str:
@@ -263,6 +819,8 @@ def render_markdown(report: dict[str, Any]) -> str:
             lines.append(f"*{card['sublabel']}*")
         for point in card.get("evidence", []):
             lines.append(f"- {point}")
+        if note := _coverage_note(card):
+            lines.append(f"<sub>{note}</sub>")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -278,11 +836,13 @@ def render_html(report: dict[str, Any]) -> str:
     cards_html = []
     for card in report["cards"]:
         evidence_html = "".join(f"<li>{e}</li>" for e in card.get("evidence", []))
+        note = _coverage_note(card)
+        coverage_html = f'\n  <p class="coverage">{note}</p>' if note else ""
         cards_html.append(
             f"""<section class="card">
   <h2>{card['headline']}</h2>
   <p class="sublabel">{card.get('sublabel', '')}</p>
-  <ul>{evidence_html}</ul>
+  <ul>{evidence_html}</ul>{coverage_html}
 </section>"""
         )
     return f"""<!DOCTYPE html>
@@ -300,6 +860,7 @@ def render_html(report: dict[str, Any]) -> str:
   .card h2 {{ margin: 0 0 0.25rem; font-size: 1.15rem; }}
   .sublabel {{ color: #a0a0ad; margin: 0 0 0.75rem; }}
   ul {{ margin: 0; padding-left: 1.25rem; }}
+  .coverage {{ color: #6f6f7d; font-size: 0.8rem; margin: 0.75rem 0 0; }}
 </style>
 </head>
 <body>
@@ -310,3 +871,16 @@ def render_html(report: dict[str, Any]) -> str:
 </body>
 </html>
 """
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Export Wrapped reports for the web story UI.")
+    parser.add_argument("--out", type=Path, default=DEFAULT_EXPORT_DIR)
+    parser.add_argument("--top-n", type=int, default=5)
+    args = parser.parse_args(argv)
+    index = export_reports(args.out, top_n=args.top_n)
+    print(f"Wrote {len(index)} reports to {args.out}")
+
+
+if __name__ == "__main__":
+    main()
