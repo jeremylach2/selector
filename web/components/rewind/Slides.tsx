@@ -1,8 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import ChartRace from "@/components/wrapped/ChartRace";
-import { type AnyCard, type Card, type Report, coverageNote } from "@/lib/wrapped";
+import ChartRace from "@/components/rewind/ChartRace";
+import { type AnyCard, type Card, type Report, coverageNote } from "@/lib/rewind";
 
 const pct = (x: number) => `${Math.round(100 * x)}%`;
 const int = (x: number) => Math.round(x).toLocaleString();
@@ -71,11 +71,12 @@ export function IntroSlide({ report }: { report: Report }) {
   const { totals, window: w } = report;
   return (
     <div className="slide-body intro">
-      <p className="eyebrow">Selector Wrapped</p>
+      <p className="eyebrow">Selector Rewind</p>
       <h2 className="slide-big">{w.label}</h2>
       <p className="slide-sub">
         {w.from} → {w.to}
       </p>
+      {report.audience === "synthetic" && <p className="slide-cov">An invented listener, not a real person.</p>}
       <dl className="intro-totals">
         <div>
           <dt>plays</dt>

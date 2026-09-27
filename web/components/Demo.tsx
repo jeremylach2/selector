@@ -123,9 +123,10 @@ export default function Demo() {
           <p className="eyebrow">Selector · a portfolio project</p>
           <h1>A fruit fly&apos;s brain picks your next song.</h1>
           <p className="lede">
-            Spotify removed recommendations and audio features from its public API in 2024. Selector rebuilds them: your
-            listening history, measured audio features, and the fly&apos;s olfactory circuit, wired from the real FlyWire
-            connectome, as the similarity engine.
+            A personal taste engine built from your own streaming-history export. With recommendations and audio features
+            gone from the public API since 2024, it works from what you own: your listening history, audio features
+            measured from public previews, and the fly&apos;s olfactory circuit, wired from the real FlyWire connectome,
+            as the similarity engine.
           </p>
 
           <Link className="cta-watch" href="/watch">

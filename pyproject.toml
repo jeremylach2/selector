@@ -5,7 +5,7 @@ description = "A local music taste warehouse, MCP server, and fly-brain recommen
 readme = "README.md"
 license = "MIT"
 authors = [
-    { name = "Jeremy Lachowicz", email = "jdlachowicz@mail.roanoke.edu" }
+    { name = "Jeremy Lachowicz", email = "jdlacho2@gmail.com" }
 ]
 requires-python = ">=3.12"
 dependencies = [

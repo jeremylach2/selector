@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useReducedMotion } from "@/components/watch/palette";
-import { monthLabel } from "@/lib/wrapped";
+import { monthLabel } from "@/lib/rewind";
 
 const TOP = 8;
 const ROW = 34; // px per bar slot

@@ -24,12 +24,14 @@ def test_build_report_shape(report):
     assert report["schema_version"] == wrapped.SCHEMA_VERSION
     assert set(report) == {
         "schema_version",
+        "audience",
         "generated_at",
         "config_hash",
         "window",
         "totals",
         "cards",
     }
+    assert report["audience"] == "private"  # the default profile is the real history
     assert report["totals"]["plays"] > 0
     assert report["cards"]  # every v1 card should compute on a real warehouse
 

@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CardSlide, IntroSlide } from "@/components/wrapped/Slides";
-import { type Report, type ReportIndex, loadIndex, loadReport } from "@/lib/wrapped";
+import { CardSlide, IntroSlide } from "@/components/rewind/Slides";
+import { PUBLIC_SOURCE, type Report, type ReportIndex, type ReportSource, loadIndex, loadReport } from "@/lib/rewind";
 
 const SWIPE_PX = 48;
 
-export default function Story() {
+export default function Story({ source = PUBLIC_SOURCE }: { source?: ReportSource }) {
   const [index, setIndex] = useState<ReportIndex | null>(null);
   const [windowId, setWindowId] = useState<string | null>(null);
   const [report, setReport] = useState<Report | null>(null);
@@ -18,7 +18,7 @@ export default function Story() {
   const initialSlide = useRef<number | null>(null);
 
   useEffect(() => {
-    loadIndex()
+    loadIndex(source)
       .then((idx) => {
         setIndex(idx);
         const params = new URLSearchParams(window.location.search);
@@ -27,13 +27,13 @@ export default function Story() {
         setWindowId(idx.windows.some((w) => w.id === fromUrl) ? fromUrl : (idx.windows[0]?.id ?? null));
       })
       .catch((e: Error) => setError(e.message));
-  }, []);
+  }, [source]);
 
   useEffect(() => {
     if (!windowId) return;
     let live = true;
     setReport(null);
-    loadReport(windowId)
+    loadReport(windowId, source)
       .then((r) => {
         if (!live) return;
         setReport(r);
@@ -47,7 +47,7 @@ export default function Story() {
     return () => {
       live = false;
     };
-  }, [windowId]);
+  }, [windowId, source]);
 
   const count = report ? report.cards.length + 1 : 0; // + intro
   const go = useCallback((d: number) => setSlide((s) => Math.max(0, Math.min(count - 1, s + d))), [count]);

@@ -118,7 +118,7 @@ def build_catalog() -> tuple[pd.DataFrame, object]:
     with duckdb.connect(str(DEFAULT_DB_PATH), read_only=True) as con:
         names = con.execute(
             """
-            SELECT t.track_id, t.name, t.artist,
+            SELECT t.track_id, t.name, t.artist, t.album,
                    MAX(CASE WHEN p.reason_end = 'trackdone' THEN p.ms_played END) AS duration_ms
             FROM tracks t LEFT JOIN plays p USING (track_id)
             GROUP BY ALL
@@ -342,7 +342,7 @@ def build_sample(cat: pd.DataFrame, tags) -> None:
                         "conn_country": "ZZ",
                         "master_metadata_track_name": cat["name"].iat[row],
                         "master_metadata_album_artist_name": cat["artist"].iat[row],
-                        "master_metadata_album_album_name": None,
+                        "master_metadata_album_album_name": cat["album"].iat[row],
                         "spotify_track_uri": f"spotify:track:{cat['track_id'].iat[row]}",
                         "episode_name": None,
                         "episode_show_name": None,

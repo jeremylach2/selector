@@ -1206,9 +1206,9 @@ footer p {
   vertical-align: -1px;
 }
 
-/* -- wrapped story ------------------------------------------------------- */
+/* -- rewind story ------------------------------------------------------- */
 
-.wrapped-hero {
+.rewind-hero {
   padding-bottom: 20px;
 }
 .story {
@@ -1491,4 +1491,15 @@ footer p {
   .slide {
     animation: none;
   }
+}
+
+/* -- site footer --------------------------------------------------------- */
+.site-foot {
+  padding: 24px 16px 32px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.site-foot p {
+  margin: 0;
 }

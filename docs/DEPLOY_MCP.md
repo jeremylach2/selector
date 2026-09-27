@@ -60,14 +60,20 @@ Two things made the "hosting the data" problem smaller than it looked:
 
 ## Auth
 
-There's no per-user auth system here — just a single shared secret. Set
-`SELECTOR_MCP_TOKEN` as a Vercel environment variable; every request must
-send `Authorization: Bearer <that value>` or the middleware in
-`http_server.py` returns 401 before the request ever reaches the MCP
-session manager. If the env var is unset, auth is skipped entirely — that's
-intentional for local testing (`uvicorn selector.mcp.http_server:app
---reload` with `src/` on `PYTHONPATH`), and is exactly why setting the
-token in Vercel is a required deploy step, not an optional hardening pass.
+There's no per-user auth system here, just a single shared secret. Set
+`SELECTOR_MCP_TOKEN` as a Vercel environment variable. Every request must
+send `Authorization: Bearer <that value>` (compared in constant time), or the
+middleware in `http_server.py` returns 401 before the request reaches the MCP
+session manager.
+
+The middleware fails closed. If `SELECTOR_MCP_TOKEN` is unset, every request
+gets 503 ("Server not configured"), so a deploy that forgot the variable
+serves nothing. For local testing without a token, set the explicit opt-out
+`SELECTOR_MCP_ALLOW_NO_AUTH=1` (`uvicorn selector.mcp.http_server:app
+--reload` with `src/` on `PYTHONPATH`). Never set it on Vercel.
+
+Rotate the token by replacing the env var and redeploying. Old clients get
+401 until they're given the new value.
 
 The SDK's built-in DNS-rebinding protection is explicitly disabled
 (`enable_dns_rebinding_protection=False` in `http_server.py`) — it checks

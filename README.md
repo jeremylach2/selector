@@ -1,12 +1,14 @@
 # Selector
 
-**I rebuilt the recommendation engine Spotify took away, and the DJ is a fly.**
+**A personal taste engine built from my own streaming-history export, and the DJ is a fly.**
 
 [![A fruit fly's olfactory circuit hashing a song into a sparse fingerprint, picking the next track, then rewiring after a skip](docs/media/watch.gif)](https://selector-demo.vercel.app/watch)
 
 **[Watch the fly pick the next track →](https://selector-demo.vercel.app/watch)** · **[Try it on your own Spotify export →](https://selector-demo.vercel.app)** · [60-second demo video](docs/media/selector-demo.mp4)
 
 Nothing to install. The demo parses your export in the browser tab and uploads nothing.
+
+Selector is an independent, non-commercial personal project. It is not affiliated with or endorsed by Spotify.
 
 ## The constraint
 
@@ -18,7 +20,7 @@ In November 2024 Spotify cut most of its recommendation surface from the Web API
 | Still available | Search, user library, top artists and tracks, playlist create and edit, playback control |
 | Still available, off-API | Extended Streaming History, via the GDPR data export |
 
-With this, I wanted to derive the features myself, which means deciding which ones can be measured from audio (tempo, loudness, danceability), which have to be predicted by a model (valence, mood, era), and how to grade the model honestly.
+So the project works within what's left: the data export I own, plus audio from elsewhere. I wanted to derive the features myself, which means deciding which ones can be measured from audio (tempo, loudness, danceability), which have to be predicted by a model (valence, mood, era), and how to grade the model honestly.
 
 Measuring anything needs audio, and Spotify's 30-second preview URLs went with the rest. So the audio comes from two public, keyless catalog APIs instead: the iTunes Search API first, and Deezer's public API as a fallback. No scraping and no YouTube. Across the full 19,386-track library, 16,741 matched (86.4%), falling from 93.6% on the most-played decile to 85.4% on the least. The matcher rejects rather than guesses, and it still let one wrong match through ("505" by Arctic Monkeys → a techno bootleg). [The full match report](docs/AUDIO_MATCHING.md) lists it, along with the point where Apple's API started returning 403s mid-run and Deezer carried the rest.
 
@@ -119,5 +121,7 @@ A biologist's connectome, a paper from 2017, and a few weekends of evenings were
 - **Lyrics:** [lrclib.net](https://lrclib.net), used only as model input and never republished ([docs/LYRICS.md](docs/LYRICS.md)).
 
 What this is: the fly's olfactory circuit used as a locality-sensitive hash, per *Science* 2017, wired from the real connectome, plus the mushroom body's plasticity rule trained on skips. A connectome is a wiring diagram, not a trained brain. Nothing here claims a fly brain does general tasks. It is one circuit used as a hash, plus one learning rule.
+
+Not affiliated with or endorsed by Spotify. Non-commercial: no ads, paid tiers or sponsorship, on the site or the MCP server. The public Rewind story at `/rewind` shows an invented listener, never real listening history; see [docs/PRIVACY.md](docs/PRIVACY.md).
 
 MIT licensed. See [LICENSE](LICENSE).

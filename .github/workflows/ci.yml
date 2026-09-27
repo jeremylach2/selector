@@ -21,6 +21,14 @@ jobs:
       # diff: anything that ever slipped past the pre-commit hook fails here.
       - name: No personal data or secrets
         run: python3 scripts/check_personal_data.py
+      # "Wrapped" is Spotify's product name. Public copy says "Rewind";
+      # lowercase code identifiers (selector.warehouse.wrapped) don't match.
+      - name: No Spotify branding in public copy
+        run: |
+          if grep -rnw "Wrapped" web/app web/components README.md; then
+            echo 'Use "Rewind", not "Wrapped", in public copy (docs/PRIVACY.md).'
+            exit 1
+          fi
       - name: Install
         run: uv sync --locked
       - name: Lint
@@ -45,3 +53,8 @@ jobs:
         run: npm run typecheck
       - name: Build
         run: npm run build
+      - name: Disclaimer on every page
+        run: |
+          for page in index rewind watch; do
+            grep -q "Not affiliated with or endorsed by Spotify" ".next/server/app/$page.html" || { echo "$page is missing the not-affiliated disclaimer"; exit 1; }
+          done

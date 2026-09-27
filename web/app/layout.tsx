@@ -19,7 +19,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <footer className="site-foot">
+          <p>Not affiliated with or endorsed by Spotify. A non-commercial personal project.</p>
+        </footer>
+      </body>
     </html>
   );
 }

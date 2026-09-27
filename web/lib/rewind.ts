@@ -1,6 +1,8 @@
-// The Wrapped report object, schema 2.0, as written by
-// `python -m selector.warehouse.wrapped` into public/wrapped/. Mirrors
-// `selector.warehouse.wrapped` -- change both together.
+// The Rewind report object, schema 2.1, as written by
+// `python -m selector.warehouse.wrapped --profile ...`. Mirrors
+// `selector.warehouse.wrapped` -- change both together. The synthetic set is
+// public under public/rewind/; the private set is only ever served by the
+// gated route in app/rewind/private/.
 
 export const SCHEMA_MAJOR = "2";
 
@@ -63,8 +65,12 @@ export type Card =
 // Any card the renderer doesn't know draws as headline + evidence.
 export type AnyCard = Card | CardOf<string, unknown>;
 
+// "synthetic": the invented sample listener. "private": the real history.
+export type Audience = "synthetic" | "private";
+
 export type Report = {
   schema_version: string;
+  audience: Audience;
   generated_at: string;
   config_hash: string;
   window: { id: string; label: string; from: string | null; to: string | null };
@@ -74,11 +80,27 @@ export type Report = {
 
 export type ReportIndex = {
   schema_version: string;
+  audience: Audience;
+  privacy: string;
   windows: { id: string; label: string; from: string | null; to: string | null; plays: number }[];
 };
 
-async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+// Where a story loads its reports from: the public static files, or the
+// gated route with the share token sent as a bearer header.
+export type ReportSource = { base: string; token?: string };
+
+export const PUBLIC_SOURCE: ReportSource = { base: "/rewind" };
+
+function reportUrl(source: ReportSource, id: string): string {
+  const name = encodeURIComponent(id);
+  return source.token ? `${source.base}/${name}` : `${source.base}/${name}.json`;
+}
+
+async function getJson<T>(url: string, source: ReportSource): Promise<T> {
+  const res = await fetch(url, {
+    headers: source.token ? { Authorization: `Bearer ${source.token}` } : undefined,
+    cache: source.token ? "no-store" : "default",
+  });
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
   return (await res.json()) as T;
 }
@@ -89,16 +111,16 @@ function checkSchema(version: string, url: string): void {
   }
 }
 
-export async function loadIndex(): Promise<ReportIndex> {
-  const url = "/wrapped/index.json";
-  const index = await getJson<ReportIndex>(url);
+export async function loadIndex(source: ReportSource = PUBLIC_SOURCE): Promise<ReportIndex> {
+  const url = reportUrl(source, "index");
+  const index = await getJson<ReportIndex>(url, source);
   checkSchema(index.schema_version, url);
   return index;
 }
 
-export async function loadReport(id: string): Promise<Report> {
-  const url = `/wrapped/${encodeURIComponent(id)}.json`;
-  const report = await getJson<Report>(url);
+export async function loadReport(id: string, source: ReportSource = PUBLIC_SOURCE): Promise<Report> {
+  const url = reportUrl(source, id);
+  const report = await getJson<Report>(url, source);
   checkSchema(report.schema_version, url);
   return report;
 }

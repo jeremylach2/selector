@@ -19,6 +19,7 @@ Two deliberate choices, both driven by this being a single-user deployment:
 
 from __future__ import annotations
 
+import hmac
 import os
 
 from mcp.server.transport_security import TransportSecuritySettings
@@ -28,15 +29,19 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from selector.mcp.server import server
 
 TOKEN_ENV_VAR = "SELECTOR_MCP_TOKEN"
+# Local `uvicorn` testing only. Never set on Vercel: without it, a missing
+# token refuses every request instead of serving the warehouse to anyone.
+ALLOW_NO_AUTH_ENV_VAR = "SELECTOR_MCP_ALLOW_NO_AUTH"
 
 
 class BearerAuthMiddleware:
     """Pure-ASGI (not BaseHTTPMiddleware) so the Streamable HTTP transport's
     SSE responses pass through unbuffered.
 
-    If `SELECTOR_MCP_TOKEN` isn't set, auth is skipped entirely — that's the
-    right behavior for local `uvicorn` testing, and deploy docs make setting
-    the token on Vercel a required step before the endpoint is reachable.
+    Fails closed: if `SELECTOR_MCP_TOKEN` isn't set, every request gets 503,
+    so a deployment that forgot the env var serves nothing rather than the
+    whole warehouse. Local testing without a token needs the explicit opt-out
+    `SELECTOR_MCP_ALLOW_NO_AUTH=1`.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -48,10 +53,15 @@ class BearerAuthMiddleware:
             return
 
         expected = os.environ.get(TOKEN_ENV_VAR)
-        if expected:
+        if not expected:
+            if os.environ.get(ALLOW_NO_AUTH_ENV_VAR) != "1":
+                response = PlainTextResponse("Server not configured", status_code=503)
+                await response(scope, receive, send)
+                return
+        else:
             headers = dict(scope.get("headers") or [])
-            got = headers.get(b"authorization", b"").decode("latin-1")
-            if got != f"Bearer {expected}":
+            got = headers.get(b"authorization", b"")
+            if not hmac.compare_digest(got, f"Bearer {expected}".encode("latin-1")):
                 response = PlainTextResponse("Unauthorized", status_code=401)
                 await response(scope, receive, send)
                 return
