@@ -9,7 +9,7 @@ one? Report it straight either way.
 Run: `uv run python notebooks/fly_connectome_validation.py`
 Output: prints a mAP table and writes `docs/img/fly_vs_lsh_connectome.png`.
 Downloads ~900 MB of FlyWire data to `data/flywire/` on first run (cached
-after that) -- see docs/FLYWIRE.md.
+after that), see docs/FLYWIRE.md.
 """
 
 from __future__ import annotations

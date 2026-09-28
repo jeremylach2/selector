@@ -1,8 +1,8 @@
 """Stage 5, Commit: liner notes, then (only if asked) the real playlist.
 
 Liner notes are written for every run, dry or not. Each transition cites
-the **measured** tempo and energy that justify it -- "tempo locks in at
-122 BPM while energy lifts 0.48 -> 0.61 into the peak" -- plus the fly
+the **measured** tempo and energy that justify it, "tempo locks in at
+122 BPM while energy lifts 0.48 -> 0.61 into the peak", plus the fly
 brain's view (Kenyon-cell distance from the previous track, and whether
 the mushroom body predicts approach).
 

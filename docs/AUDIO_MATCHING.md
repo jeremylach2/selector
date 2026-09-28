@@ -1,4 +1,4 @@
-# Audio matching — full-library results (all 19,386 tracks)
+# Audio matching, full-library results (all 19,386 tracks)
 
 Spotify removed 30-second preview URLs for new apps in November 2024, so
 Step 8's pipeline (`selector/audio/resolve.py` + `selector/audio/fetch.py`)
@@ -13,7 +13,7 @@ matched at 91.5%. Once the fly's fingerprint collisions were traced to the
 83.5% of the library with no audio (`docs/MBON_EVAL.md`), the same pipeline
 was re-run with `--limit 19386` to cover every track in the warehouse.
 
-**86.4% match rate (16,741/19,386)** — lower than the top-3,000 run, as
+**86.4% match rate (16,741/19,386)**, lower than the top-3,000 run, as
 expected: this run reaches deep into the one-or-two-play tail, which the
 earlier supplemental sample (below) already showed matches somewhat worse.
 
@@ -33,27 +33,27 @@ By play-count decile (0 = most-played, 9 = least-played of the 19,386):
 | 9 | 85.4% |
 
 Flatter than the top-3,000 curve, because deciles here are of the *whole*
-library rather than just its most-played slice — decile 9 here is the bottom
+library rather than just its most-played slice, decile 9 here is the bottom
 10% of all 19,386 tracks, mostly played once or twice, not the relatively
 mainstream "least-played of the top 3,000" the original run measured.
 
-**Source split: 15,513 Deezer, 1,228 iTunes** — an even more lopsided ratio
+**Source split: 15,513 Deezer, 1,228 iTunes**, an even more lopsided ratio
 than the top-3,000 run's 2,200:545, consistent with that run's finding that
 iTunes throttles hard at this request volume and Deezer carries the load.
 
-**Operational note.** The run hit exactly one API/download error across
+Operational note: The run hit exactly one API/download error across
 19,386 tracks, which the fix from this expansion (`resolve.py` no longer
 checkpoints a track it couldn't get a real verdict for) caught and left for
 a retry rather than recording as a false "unmatched." A second invocation
 of the same command picked it up and matched it.
 
-**Downstream effect.** Coverage feeding the fly brain went from 16.5%
-(3,198 tracks, the top-3,000 scope) to 86.3% (16,739 tracks — 2 clips failed
+Downstream effect: Coverage feeding the fly brain went from 16.5%
+(3,198 tracks, the top-3,000 scope) to 86.3% (16,739 tracks, 2 clips failed
 librosa decoding). Fingerprint collisions dropped from 81.7% of the library
 sharing an exact tag to 40.4% (`docs/MBON_EVAL.md`), and the full-feature
 fly's skip-prediction AUC on unseen tracks improved from 0.542 to 0.562.
 The vibe tagger was re-run on the newly matched tracks with the audio arm
-(`docs/EVAL.md`); `docs/TEACHER.md`'s cost figures are unaffected, since no
+(`docs/EVAL.md`). `docs/TEACHER.md`'s cost figures are unaffected, since no
 new teacher labels were needed for inference-only tagging.
 
 ## Original scope: top 3,000 tracks by play count
@@ -85,8 +85,8 @@ By play-count decile (0 = most-played, 9 = least-played of the 3,000):
 | 8 | 87.7% |
 | 9 | 86.7% |
 
-A gentle, expected downward slope from the most- to least-played tracks —
-no cliff — meaning the pipeline holds up reasonably well even on the tail,
+A gentle, expected downward slope from the most- to least-played tracks,
+no cliff, meaning the pipeline holds up reasonably well even on the tail,
 not just the mainstream top slice the pilot sampled.
 
 ## Supplemental tail sample (500 tracks)
@@ -107,7 +107,7 @@ matching doesn't fall off further on tracks played only once or twice. The
 combined pool is 3,500 tracks with 3,198 matched (91.4%).
 `data/audio_matches.parquet` covers all 3,500.
 
-## Matched source split — and an operational finding
+## Matched source split, and an operational finding
 
 Of the 2,745 matches: **545 from iTunes, 2,200 from Deezer.** This is the
 *opposite* ratio from the 200-track pilot (121 iTunes / 77 Deezer), which
@@ -131,7 +131,7 @@ iTunes matches fall off a cliff after decile 3 and effectively stop.
 Querying the iTunes Search API directly, post-run, confirms why: it now
 returns **HTTP 403** for this run's request pattern. `resolve.py`'s
 `_best_candidate` catches `httpx.HTTPError` and treats a failed iTunes call
-as "no candidates," silently falling through to Deezer — which is why the
+as "no candidates," silently falling through to Deezer, which is why the
 overall match rate stayed healthy (91.5%) despite iTunes going dark partway
 through the ~2,800-track run. Apple's Search API has no documented rate
 limit, but empirically this volume of sequential calls (even at the
@@ -139,7 +139,7 @@ existing 0.2s inter-call delay) triggered a block that a slower pilot run
 of 200 calls did not.
 
 **Practical implication for future reruns:** Deezer alone is carrying most
-of the match rate here and appears robust at this volume — treat iTunes as
+of the match rate here and appears robust at this volume, treat iTunes as
 a highest-confidence-when-available bonus, not a load-bearing source, for
 any full-scale rerun. If iTunes coverage matters (e.g. its metadata is
 occasionally cleaner), consider a longer inter-call delay or a resumable
@@ -151,9 +151,9 @@ full run.
 The scoring function (`score_candidate` in `resolve.py`) weights normalised
 title similarity (55%) and artist similarity (45%), and subtracts a 0.35
 penalty when one side has a modifier the other doesn't (live/remix/cover/
-acoustic/remaster/demo/instrumental) — a "Live" recording is a different
+acoustic/remaster/demo/instrumental), a "Live" recording is a different
 recording of the song, not a fuzzy-matching nuisance to shrug off.
-`DEFAULT_MATCH_THRESHOLD = 0.72`; anything scoring below that is recorded as
+`DEFAULT_MATCH_THRESHOLD = 0.72`. Anything scoring below that is recorded as
 unmatched rather than guessed at, on the theory that a silent bad match
 poisons every downstream audio feature.
 
@@ -181,14 +181,14 @@ Two things worth calling out honestly:
   techno remix/bootleg by a different artist that happens to share a title
   token. This is the same failure mode the pilot's "Mine Again"/"Mine" case
   flagged as a risk of the 0.72 cutoff being too permissive for short,
-  generic titles — now confirmed at full scale. Worth a follow-up: either
+  generic titles, now confirmed at full scale. Worth a follow-up: either
   raise the threshold slightly or add an artist-similarity floor
   independent of the blended score, since here the title similarity alone
   was carrying a match with weak artist agreement.
 - Several straightforward catalog tracks (Elton John "Daniel", Nirvana
-  "Breed", Yellowcard "Only One") were rejected rather than guessed at —
+  "Breed", Yellowcard "Only One") were rejected rather than guessed at,
   consistent with the pilot's Eagles/Steely Dan misses. These are almost
-  certainly available from both APIs; the rejection is a
+  certainly available from both APIs. The rejection is a
   scoring/normalisation gap (title variant the query didn't anticipate),
   not evidence the song is absent from either catalog. The "reject over
   guess" policy means this shows up as a slightly lower match rate rather
@@ -199,7 +199,7 @@ Two things worth calling out honestly:
 Of the 2,745 clips downloaded: **iTunes serves AAC-in-M4A, Deezer serves
 plain MP3.** `libsndfile` (soundfile's backend, and librosa's default
 loader) has no AAC decoder at all, so `features_librosa.py` falls back to
-PyAV (which bundles static ffmpeg libraries) for `.m4a` files — see the
+PyAV (which bundles static ffmpeg libraries) for `.m4a` files, see the
 `_load_via_pyav` docstring there. No system-level ffmpeg install was needed.
 With iTunes now supplying only ~20% of matches (see the operational finding
 above), the large majority of clips are MP3 decoded natively by libsndfile,
@@ -208,16 +208,16 @@ with PyAV as the AAC fallback for the iTunes minority.
 ## Known limits of this run
 
 - No manual listen-through was done to confirm every accepted match is
-  actually the right *recording*, not just the right *song* — the '505'
+  actually the right *recording*, not just the right *song*, the '505'
   false positive above confirms this is a real, not just theoretical, gap
   at the 0.72 threshold.
 - iTunes coverage is now effectively capped by the mid-run 403 block
-  described above; Deezer is doing most of the work. A rerun with a longer
+  described above. Deezer is doing most of the work. A rerun with a longer
   inter-call delay might recover more iTunes-sourced matches, but wasn't
   attempted here since the overall match rate already met the plan's
   target.
 - The 255 unmatched tracks (8.5%) were not manually re-queried with relaxed
-  parameters — some are likely recoverable with query reformulation (e.g.
+  parameters, some are likely recoverable with query reformulation (e.g.
   stripping more remaster/edition suffixes before searching).
 
 ## Pilot results (200-track pilot, superseded above)
@@ -225,9 +225,9 @@ with PyAV as the AAC fallback for the iTunes minority.
 Kept for the before/after record. The pilot was the top 200 tracks by play
 count only, run before scaling to the full 3,000-track scope.
 
-**99.0% match rate (198/200)** — expectedly higher than the full-scope
+**99.0% match rate (198/200)**, expectedly higher than the full-scope
 number, since the top 200 by play count are the most mainstream,
-best-catalogued tracks in the library; this was flagged at the time as a
+best-catalogued tracks in the library. This was flagged at the time as a
 ceiling, not the final figure, which the full run above confirms (91.5%).
 
 By play-count decile (0 = most-played, 9 = least-played of the 200):
@@ -238,7 +238,7 @@ By play-count decile (0 = most-played, 9 = least-played of the 200):
 | 4 | 90.0% |
 | 5-9 | 100.0% |
 
-Source split: **121 from iTunes, 77 from Deezer** — roughly reversed from
+Source split: **121 from iTunes, 77 from Deezer**, roughly reversed from
 the full run's 545/2,200, because the pilot's much lower request volume
 never triggered iTunes's rate limiting (see the operational finding above).
 

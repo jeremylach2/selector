@@ -5,7 +5,7 @@ Reference: Dasgupta, Stevens & Navlakha, "A neural algorithm for a
 fundamental computing problem", Science 358:6364 (2017).
 
 Dataset: a subsample of MNIST (fetched once via scikit-learn and cached
-outside the repo, in the user's default scikit-learn data directory — no
+outside the repo, in the user's default scikit-learn data directory, no
 network needed on subsequent runs). `tests/test_fly_benchmark.py` runs the
 same comparison on a small synthetic dataset for a fast, offline regression
 check; this script is the slower, real-data reproduction that the README's

@@ -3,19 +3,19 @@
 Reads a finished `Selection` back against the arc it was built for and
 checks what a listener would notice:
 
-- **off-arc** -- a track's measured energy sits outside the arc's band at
+- **off-arc**: a track's measured energy sits outside the arc's band at
   the point it plays (Select can be forced there by band widening),
-- **jarring transition** -- a tempo or energy lurch between neighbours
+- **jarring transition**: a tempo or energy lurch between neighbours
   beyond the transition rules in `selector.dj.arc`,
-- **flat shape** -- the realised peak isn't clearly above the opener and
+- **flat shape**: the realised peak isn't clearly above the opener and
   the close, i.e. the set never actually builds and releases,
-- **length** -- the set misses the requested running time badly,
-- **artist cap** -- more than `max_per_artist` tracks by one artist.
+- **length**: the set misses the requested running time badly,
+- **artist cap**: more than `max_per_artist` tracks by one artist.
 
 Select is greedy: it only ever looks one track back, so it can paint itself
 into a corner that only shows up when the whole set is read at once. That
-is what this pass is for. A failed verdict carries a `revision` -- tracks to
-exclude and a heavier transition weight -- that the agent hands back to
+is what this pass is for. A failed verdict carries a `revision`, tracks to
+exclude and a heavier transition weight, that the agent hands back to
 Select exactly once. Nothing reaches Spotify unless a verdict passes.
 """
 

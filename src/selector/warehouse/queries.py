@@ -156,7 +156,7 @@ def artist_sprint(
     db_path: Path = DEFAULT_DB_PATH,
 ) -> pd.DataFrame:
     """Monthly play counts, cumulative, for every artist who ever cracked
-    that month's top `top_n` — the "race" behind an artist-sprint chart.
+    that month's top `top_n`, the "race" behind an artist-sprint chart.
 
     Only artists who reached the top `top_n` in at least one calendar month
     are included, but each gets its *full* monthly history (not just the

@@ -15,7 +15,7 @@ from selector.spotify.client import SpotifyAPIError, SpotifyClient
 
 @pytest.fixture(autouse=True)
 def _no_real_auth(monkeypatch):
-    """Every test gets a fake bearer token — none of this touches auth.py."""
+    """Every test gets a fake bearer token, none of this touches auth.py."""
     monkeypatch.setattr(
         SpotifyClient, "_auth_headers", lambda self: {"Authorization": "Bearer fake"}
     )

@@ -2,10 +2,10 @@
 lyrics, and (where a preview clip was matched and Step 9 has run) measured
 audio features.
 
-Lyrics come from lrclib.net — see docs/LYRICS.md for why, over the more
-obvious Genius API, which doesn't return lyrics text at all for exactly this
+Lyrics come from lrclib.net rather than the more
+obvious Genius API (see docs/LYRICS.md), which doesn't return lyrics text at all for exactly this
 kind of use. A missing lyric, a missing release year, or a missing measured
-feature are all valid, expected inputs, not failures — this project's tail
+feature are all valid, expected inputs, not failures. This project's tail
 of niche tracks won't have all three for every row, and the teacher prompt
 is written to work from whatever is available.
 """

@@ -32,7 +32,7 @@ CONNECTION_ROWS = [
     # KC 10 reads from PNs 1 and 2
     {"pre_pt_root_id": 1, "post_pt_root_id": 10, "syn_count": 5},
     {"pre_pt_root_id": 2, "post_pt_root_id": 10, "syn_count": 3},
-    # duplicate pre/post pair in a different neuropil -- should sum
+    # duplicate pre/post pair in a different neuropil, should sum
     {"pre_pt_root_id": 2, "post_pt_root_id": 10, "syn_count": 1},
     # KC 11 reads from PN 3 only
     {"pre_pt_root_id": 3, "post_pt_root_id": 11, "syn_count": 7},
@@ -100,7 +100,7 @@ def test_pool_to_width_preserves_total_weight_and_shape(synthetic_flywire):
 
     assert pooled.shape == (3, 2)
     assert sparse.issparse(pooled)
-    # Pooling only regroups columns -- no synapse weight is created or lost.
+    # Pooling only regroups columns, no synapse weight is created or lost.
     assert pooled.sum() == pytest.approx(matrix.sum())
 
 

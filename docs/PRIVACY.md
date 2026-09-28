@@ -1,6 +1,6 @@
 # Privacy
 
-The project is public; the listening history behind it is not. This covers
+The project is public. The listening history behind it is not. This covers
 what is published, what is gated, and the checks that keep it that way.
 
 ## What the public site shows
@@ -160,7 +160,7 @@ graph of `selector.tagger`, `selector.fly`, `selector.audio` and
 `selector.ingest`, including imports made inside functions, and fails if
 any of them can reach `selector.spotify`.
 
-**Inference is the gray area.** The `spotify_*` MCP tools, local and
+Inference is the gray area. The `spotify_*` MCP tools, local and
 hosted, hand live Web API results to Claude in a conversation. The hosted
 server passes them through without storing them. The DJ agent may read the
 live recently-played list to pick a theme, which is deterministic scoring,

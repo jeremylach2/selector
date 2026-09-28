@@ -4,12 +4,12 @@
 CPU-only by design: this project's dev machine has an AMD GPU (no CUDA,
 and ROCm doesn't support that card on Windows), so `device_map` is pinned
 to `"cpu"` rather than left to auto-detect. Runtime scales roughly linearly
-with example count and epochs — a few hundred examples for a couple of
+with example count and epochs: a few hundred examples for a couple of
 epochs is a tens-of-minutes job on a 6-core CPU; the full ~2,000+ track
 training split, once labelled at scale, should be assumed to take several
 hours CPU-only. See docs/EVAL.md for the actual numbers run in this project.
 
-No external tracking service — everything logs to a local run directory.
+No external tracking service. Everything logs to a local run directory.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 """Extract audio DSP features from downloaded preview clips, using librosa.
 
-Runs natively on Windows — the other half of the feature stack
+Runs natively on Windows, the other half of the feature stack
 (``features_essentia``) needs WSL2 because ``essentia-tensorflow`` ships no
 Windows wheels.
 
@@ -36,7 +36,7 @@ def _load_via_pyav(path: str, sr: int) -> np.ndarray:
     """Decode with PyAV's bundled ffmpeg libraries.
 
     libsndfile (soundfile's backend, and librosa's default loader) has no
-    AAC/M4A decoder at all — a system ffmpeg install or a wheel that bundles
+    AAC/M4A decoder at all, a system ffmpeg install or a wheel that bundles
     one is required. PyAV ships static ffmpeg libs, so this needs no
     external binary on the machine running it. iTunes previews are AAC-in-M4A;
     Deezer's are plain MP3, which libsndfile decodes natively.
@@ -127,8 +127,8 @@ def _extract_one(track_id: str, path: str) -> tuple[str, dict[str, float] | None
 def extract_all(matches: pd.DataFrame, max_workers: int | None = None) -> pd.DataFrame:
     """Extract features for every matched track, in parallel across cores.
 
-    Embarrassingly parallel — one clip's decode + feature extraction doesn't
-    depend on any other's — so this uses a process pool and should take
+    Embarrassingly parallel, one clip's decode + feature extraction doesn't
+    depend on any other's, so this uses a process pool and should take
     minutes, not hours, even at the full ~3,000-track scope.
     """
     matched = matches[matches["local_path"].notna()]

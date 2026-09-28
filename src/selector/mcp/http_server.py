@@ -56,7 +56,7 @@ ALLOW_NO_AUTH_ENV_VAR = "SELECTOR_MCP_ALLOW_NO_AUTH"
 log = logging.getLogger(__name__)
 
 # The SDK's DNS-rebinding protection matches the `Host` header against an
-# allowlist meant for a server bound to localhost — it would reject every
+# allowlist meant for a server bound to localhost. It would reject every
 # real request here, since Vercel's Host header is the deployment domain,
 # not "localhost". That protection defends against a browser being tricked
 # into hitting a *local* MCP server; it doesn't apply to a public endpoint

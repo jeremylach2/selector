@@ -3,8 +3,8 @@
 Spotify removed preview URLs for new apps in November 2024, so previews come
 from elsewhere: the iTunes Search API (no auth, ``previewUrl``, AAC) tried
 first, and the Deezer public catalog API (no auth for search, ``preview``,
-MP3) as a fallback. Neither is scraped and neither requires a login — this is
-a recruiter-facing project and a ToS-violating pipeline would be a liability,
+MP3) as a fallback. Neither is scraped and neither requires a login. This is
+a public project and a ToS-violating pipeline would be a liability,
 not a shortcut.
 
 Deezer preview URLs are time-limited signed links. This module therefore
@@ -41,7 +41,7 @@ USER_AGENT = "Selector/0.1 (portfolio project, keyless public API usage)"
 
 # Below this score a candidate is recorded as unmatched rather than guessed
 # at. Silent bad matches would poison every downstream audio feature, so this
-# is deliberately conservative — see docs/AUDIO_MATCHING.md.
+# is deliberately conservative, see docs/AUDIO_MATCHING.md.
 DEFAULT_MATCH_THRESHOLD = 0.72
 
 # Tokens that change what a recording *is*, not just how it's spelled. A
@@ -85,13 +85,13 @@ def normalize(text: str) -> tuple[str, frozenset[str]]:
 
     Returns ``(clean_text, modifiers)``. Modifiers (live/remix/acoustic/...)
     are stripped from the text used for similarity scoring but kept as a
-    separate signal — a "Live" candidate for a studio original is a bad
+    separate signal: a "Live" candidate for a studio original is a bad
     match, not a good one with noisy formatting.
     """
     lowered = text.lower()
     lowered = re.sub(r"\bfeat\.?\b|\bft\.?\b", " ", lowered)
     # \w* lets "remaster" match "remastered", "instrumental" match
-    # "instrumentals", etc. — these are inflections of the same modifier.
+    # "instrumentals", etc. These are inflections of the same modifier.
     found_modifiers = {tok for tok in MODIFIER_TOKENS if re.search(rf"\b{tok}\w*\b", lowered)}
     cleaned = _strip_parens(lowered)
     for tok in MODIFIER_TOKENS:

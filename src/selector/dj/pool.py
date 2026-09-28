@@ -2,7 +2,7 @@
 five stages need attached to one row.
 
 A track is only in the crate if it has **measured** audio features
-(`data/audio_features.parquet`, Step 9) -- about 3,200 of the 19,386
+(`data/audio_features.parquet`, Step 9), about 3,200 of the 19,386
 warehouse tracks. That restriction is deliberate: the energy arc is a hard
 constraint, and a hard constraint checked against a model's *guess* at
 energy would be a constraint on nothing. Everything else on the row mixes
@@ -29,7 +29,7 @@ from scipy import sparse
 from selector.fly import pipeline as fly_pipeline
 from selector.warehouse.build import DEFAULT_DB_PATH
 
-# Perceived energy is loudness, activity and brightness together -- the same
+# Perceived energy is loudness, activity and brightness together, the same
 # ingredients Spotify's own (now removed) `energy` feature was documented as
 # combining. Each column is already min-max scaled to [0, 1] by
 # `selector.audio.merge`; the weighted sum is then rank-normalised over the

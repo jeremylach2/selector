@@ -12,21 +12,21 @@ short one are held to different targets. A candidate must:
 - in `hard_transitions` mode (Critique's revision request), not make a
   transition Critique would call jarring.
 
-When nothing survives, constraints relax in a fixed order -- ratio, then
-transition rule, then band width -- and every relaxation is logged.
+When nothing survives, constraints relax in a fixed order, ratio, then
+transition rule, then band width, and every relaxation is logged.
 
 Survivors are ranked on five terms:
 
-- **arc fit** -- how close the track's measured energy is to the target
+- **arc fit**: how close the track's measured energy is to the target
   (the band is the hard limit; this pulls picks towards its centre, so the
   realised curve has the arc's shape and not just its bounds),
 
-- **coherence** -- fly-brain similarity (Dice overlap of Kenyon-cell tags,
+- **coherence**: fly-brain similarity (Dice overlap of Kenyon-cell tags,
   i.e. normalised Hamming distance) to the previous pick and to the brief's
   seed tracks,
-- **taste** -- the production mushroom body's valence (percentile over the
+- **taste**: the production mushroom body's valence (percentile over the
   crate), i.e. how much the fly predicts this listener approaches the track,
-- **theme** -- mood-tag overlap with the theme,
+- **theme**: mood-tag overlap with the theme,
 - minus a **transition** penalty for tempo and energy jumps from the
   previous pick (measured features, see `selector.dj.arc`).
 

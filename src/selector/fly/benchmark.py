@@ -38,7 +38,7 @@ def pool_features(X: np.ndarray, n_out: int) -> np.ndarray:
     away half their signal by FlyHash's non-negative firing-rate assumption
     (see `FlyHash._normalise`). Summing raw non-negative pixel intensities
     keeps that assumption valid, at the cost of losing spatial locality
-    within a pooled bucket -- an honest trade documented here rather than
+    within a pooled bucket, an honest trade documented here rather than
     in a code comment nobody reads before wondering why mAP looks low.
     """
     n_in = X.shape[1]
@@ -51,7 +51,7 @@ def pool_features(X: np.ndarray, n_out: int) -> np.ndarray:
 def classical_lsh_transform(X: np.ndarray, k: int, seed: int = 0) -> np.ndarray:
     """Dense random-projection LSH ("SimHash"): sign of a projection onto `k`
     random hyperplanes. This is the classical baseline the fly circuit is
-    compared against — a k-bit code with no expansion and no sparsification.
+    compared against, a k-bit code with no expansion and no sparsification.
     """
     rng = np.random.default_rng(seed)
     d = X.shape[1]

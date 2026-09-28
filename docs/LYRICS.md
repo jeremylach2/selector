@@ -2,7 +2,7 @@
 
 Step 10 needs lyrics as one input to the teacher (alongside metadata and
 measured audio features). This needed a source whose terms actually permit
-the use — feeding the text into an LLM call, not republishing it — rather
+the use, feeding the text into an LLM call, not republishing it, rather
 than the first API that returns text.
 
 ## Source: lrclib.net
@@ -13,7 +13,7 @@ apps. It was chosen over the obvious alternative (Genius) for a concrete
 reason:
 
 - **Genius's official API** deliberately does **not** return full lyrics
-  text in its search/song responses — publisher licensing means the API
+  text in its search/song responses, publisher licensing means the API
   gives metadata and a link to the Genius webpage, not the lyrics
   themselves. Getting the actual text off the webpage means scraping, which
   Genius's terms prohibit. That rules it out for this project's "no
@@ -23,12 +23,12 @@ reason:
   directly** (`plainLyrics` and, where available, line-synced
   `syncedLyrics`) specifically so client apps can display them. It's
   community-sourced rather than licensed from publishers, which is a real
-  limitation — coverage skews toward well-known tracks, and there's no
-  guarantee of accuracy — but the terms of using the API for this purpose
+  limitation, coverage skews toward well-known tracks, and there's no
+  guarantee of accuracy, but the terms of using the API for this purpose
   are unambiguous, unlike scraping a page that says not to.
 
 `GET https://lrclib.net/api/search?track_name=...&artist_name=...` returns
-a list of candidate matches; this project takes the first result's
+a list of candidate matches. This project takes the first result's
 `plainLyrics` (or `null` if the field is absent or no result matches well
 enough), never the synced/timed variant, since only the words matter here.
 
@@ -88,6 +88,6 @@ tracks. The ablation is in `docs/MBON_EVAL.md`.
 
 ## Caching
 
-Lyrics are cached to `data/lyrics/{track_id}.txt` (gitignored — this is
+Lyrics are cached to `data/lyrics/{track_id}.txt` (gitignored, this is
 fetched content, not something to redistribute) so a re-run of the
 enrichment or labelling step never re-fetches a track it already has.

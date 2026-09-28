@@ -153,7 +153,7 @@ def binged_then_abandoned(min_plays: int = 15, window_months: int = 3) -> str:
 
 
 def skip_offenders(min_plays: int = 5) -> str:
-    """Find tracks that get played often but also skipped often — songs this
+    """Find tracks that get played often but also skipped often, songs this
     person keeps queuing up and then bailing on. `min_plays` filters out
     tracks with too few plays to have a meaningful skip rate.
     """
@@ -162,7 +162,7 @@ def skip_offenders(min_plays: int = 5) -> str:
 
 def listening_clock() -> str:
     """Get play counts broken down by hour of day and day of week (UTC), to
-    answer questions about when listening actually happens — late-night
+    answer questions about when listening actually happens: late-night
     habits, weekday-vs-weekend patterns, commute-time spikes.
     """
     return _run(queries.listening_clock)
@@ -172,7 +172,7 @@ def taste_drift(granularity: str = "quarter", top_n: int = 5) -> str:
     """Get the top artists per time period, to show how taste evolved.
     `granularity` is "month", "quarter", or "year". Use a coarser
     granularity (quarter or year) for a broad multi-year overview, and
-    "month" only for a short, recent window — otherwise the table gets long.
+    "month" only for a short, recent window. Otherwise the table gets long.
     """
     return _run(queries.taste_drift, granularity=granularity, top_n=top_n)
 
@@ -180,7 +180,7 @@ def taste_drift(granularity: str = "quarter", top_n: int = 5) -> str:
 def rediscovery_candidates(dormant_months: int = 6, min_past_plays: int = 10) -> str:
     """Find tracks that were played often in the past (at least
     `min_past_plays` times) but haven't been played in at least
-    `dormant_months` months — songs this person used to love and forgot
+    `dormant_months` months, songs this person used to love and forgot
     about. Good for "what should I revisit" style questions.
     """
     return _run(

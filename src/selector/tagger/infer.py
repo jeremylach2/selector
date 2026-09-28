@@ -1,6 +1,6 @@
 """Tag every track in the warehouse with the winning fine-tuned
 configuration from Step 11's eval table, producing
-`data/track_features.parquet` — the file Step 12 consumes.
+`data/track_features.parquet`, the file Step 12 consumes.
 
 Arm C (lyrics + measured audio + metadata) for the ~3,198 tracks with a
 matched audio preview, arm A (lyrics + metadata) for the rest, since arm C
@@ -11,11 +11,11 @@ used when a generation didn't parse are not the same claim about a track.
 
 Generation runs through llama.cpp's Vulkan `llama-server` (see
 docs/GPU_INFERENCE.md) rather than the CPU eval path used for the 487-track
-test split in `selector.tagger.eval` — at 19,386 tracks, CPU generation
+test split in `selector.tagger.eval`. At 19,386 tracks, CPU generation
 would take on the order of a day; the GPU path was verified to match the
 CPU path's metrics on the same held-out test split before being trusted
 here (`scripts/gpu_parity_check.py`, results in docs/GPU_INFERENCE.md).
-Requires both arm servers running (ports 8711/A, 8712/C — see
+Requires both arm servers running (ports 8711/A, 8712/C; see
 docs/GPU_INFERENCE.md for the exact launch commands) and checkpoints to
 `data/track_features_checkpoint.jsonl` after every track, so a kill resumes
 instead of restarting.
@@ -33,7 +33,7 @@ column and no generation.
 
 `--dry-run` predicts using the trivial train-mean baseline instead of
 calling a model, so the output schema and the Step 12 handoff can be
-exercised end to end without a GPU server running — every row in that mode
+exercised end to end without a GPU server running, every row in that mode
 is flagged `label_source="dry_run_baseline"`, never something a downstream
 consumer could mistake for a real prediction.
 """

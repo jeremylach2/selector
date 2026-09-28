@@ -1,4 +1,4 @@
-"""Unit tests for the PKCE auth flow. No network calls and no browser opens —
+"""Unit tests for the PKCE auth flow. No network calls and no browser opens,
 every Spotify-facing function is monkeypatched at the module boundary.
 """
 

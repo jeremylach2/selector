@@ -3,9 +3,8 @@
 (The module and the MCP tool keep their original `wrapped` names; everything
 public says "Rewind", since "Wrapped" is Spotify's product name.)
 
-Implements the "v1 — warehouse only" and "v1.5 — metadata" slices of the
-Wrapped extension plan (see `Selector - Project Extension Plan.md`, stages
-0-2 and 6-8): local SQL plus the cached album release years from
+Implements the "v1, warehouse only" and "v1.5, metadata" slices of the
+Wrapped report: local SQL plus the cached album release years from
 `selector.audio.metadata`, no network calls. The v1.5 cards (listening age,
 decade histogram) are tier B and carry a `coverage` block, since only albums
 with a resolved release year count towards them. The v2 cards (taste
@@ -15,8 +14,8 @@ and cites the clusters.
 
 `build_report()` assembles the versioned report object; each `_card_*`
 function is a pure function that returns a card dict or `None` if it can't
-be computed, matching stage 6 of the plan ("a card that can't be computed
-returns None rather than raising — the assembler drops it").
+be computed, so a card that can't be computed returns None rather than raising and the
+assembler drops it.
 
 Two export profiles (see docs/PRIVACY.md). `synthetic` runs the same
 pipeline over the invented listener in `web/public/sample/` and writes the
@@ -275,7 +274,7 @@ def _card_artist_sprint(df: pd.DataFrame) -> dict[str, Any] | None:
     finals = df.sort_values("month").groupby("artist", as_index=False).tail(1)
     finals = finals.sort_values("cumulative_plays", ascending=False)
     leader = finals.iloc[0]
-    # A dense month x artist matrix of cumulative plays -- the frames of a
+    # A dense month x artist matrix of cumulative plays, the frames of a
     # chart race. Every calendar month in range appears, and an artist's
     # total carries forward through months they weren't played.
     months = pd.date_range(df["month"].min(), df["month"].max(), freq="MS")
@@ -743,7 +742,7 @@ def build_report(
     load the fly-brain fingerprints and taste clusters, build every card, and
     assemble the versioned report object. Raises FileNotFoundError if the
     warehouse hasn't been built yet; never raises for an individual card
-    failing — that card is just dropped (both v1.5 cards when the
+    failing, that card is just dropped (both v1.5 cards when the
     release-year cache is missing, the cluster and gem cards when the fly
     artefacts are). The archetype card survives either, with fewer rules
     able to fire. No network calls: cluster names written by a model are
@@ -928,7 +927,7 @@ def render_markdown(report: dict[str, Any]) -> str:
 
 
 def render_html(report: dict[str, Any]) -> str:
-    """Stage 8, standalone HTML story renderer — one static page, one card
+    """Stage 8, standalone HTML story renderer, one static page, one card
     per section, no JS framework. Exercises the report schema the way a
     real (non-chat) consumer eventually will, per the plan's "de-risk the
     demo" rationale for building the HTML render alongside v1.

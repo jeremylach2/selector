@@ -3,14 +3,14 @@
 Biology: dopaminergic neurons gate depression of Kenyon-cell to mushroom-body
 output-neuron (KC->MBON) synapses. A fly learns that an odour predicts
 punishment by *weakening* the KC->MBON synapses that were active when the
-punishment arrived -- not by strengthening anything. This module implements
+punishment arrived, not by strengthening anything. This module implements
 that rule with two output neurons, approach and avoid, whose balance is the
 fly's predicted taste score for a track.
 
 The supervision signal is already in the warehouse: `verdict` in
 `data/plays.parquet` is `+1` for a played-out or replayed track, `-1` for a
 skip, `0` for neutral (see `selector.ingest.load_history`). Training must
-replay plays in chronological order -- this is a time series, and shuffling
+replay plays in chronological order, this is a time series, and shuffling
 it would let the model learn from its own future.
 """
 
@@ -40,7 +40,7 @@ class MushroomBody:
     Parameters
     ----------
     fly_hash:
-        A fitted `selector.fly.lsh.FlyHash` (or anything exposing `.n_kc`) --
+        A fitted `selector.fly.lsh.FlyHash` (or anything exposing `.n_kc`),
         the KC population this mushroom body reads from.
     n_mbon:
         Fixed at 2 (approach, avoid); accepted as a parameter for interface
@@ -81,7 +81,7 @@ class MushroomBody:
         *avoid* synapses of the active KCs, raising net approach for tags
         like this one in future; a punishment (`verdict < 0`) depresses the
         *approach* synapses instead. `verdict == 0` (neutral/ambiguous plays)
-        makes no update -- there is no dopaminergic signal to gate anything.
+        makes no update, there is no dopaminergic signal to gate anything.
         Only the KCs active in `tag` are touched, which is the whole point:
         this circuit generalises across tracks only through tag overlap.
         """

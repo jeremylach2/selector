@@ -1,8 +1,7 @@
 """Resolve album-level release years for the tracks `selector.audio.resolve`
 already matched to an iTunes or Deezer preview.
 
-This is stage 2 ("Resolve metadata") of the Wrapped extension plan — see
-`Selector - Project Extension Plan.md` — and it's what the `listening_age`
+This is the metadata stage of the Wrapped report, and it's what the `listening_age`
 and decade-histogram cards (v1.5) need. Both iTunes and Deezer return the
 parent album's release date on the *track* lookup itself, so this makes one
 call per unique `(artist, album)` among the matched tracks rather than one

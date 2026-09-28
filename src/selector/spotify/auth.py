@@ -1,7 +1,7 @@
 """Authorization Code with PKCE against the Spotify Web API.
 
 Only the surviving endpoints (search, library, top items, playlists,
-playback) are ever called through the token this produces — audio-features,
+playback) are ever called through the token this produces. Audio-features,
 audio-analysis, recommendations, related-artists, and preview URLs were all
 removed for new apps in November 2024 and nothing here assumes they exist.
 

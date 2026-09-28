@@ -59,7 +59,7 @@ I hope I haven't lost you in layer 3, and in all honesty I had no clue what any 
 
 ### Limits worth knowing
 
-- **Fingerprints still collide, much less than before.** Expanding audio coverage from the top 3,000 tracks to the whole library dropped the share of tracks sharing an exact fingerprint from 81.7% to 40.4%. It's now 32.5% even among tracks with audio (up from 5.4% at the old, smaller scale — more tracks means more chances to land in the same coarse bucket) and 90.6% among the 13.7% still without it. "More like this" on an audio-less seed still often returns ties at Hamming distance 0.
+- **Fingerprints still collide, much less than before.** Expanding audio coverage from the top 3,000 tracks to the whole library dropped the share of tracks sharing an exact fingerprint from 81.7% to 40.4%. It's now 32.5% even among tracks with audio (up from 5.4% at the old, smaller scale, more tracks means more chances to land in the same coarse bucket) and 90.6% among the 13.7% still without it. "More like this" on an audio-less seed still often returns ties at Hamming distance 0.
 - **One of the four measured audio inputs is nearly dead weight.** `harmonic_percussive_ratio_scaled` sits below 0.01 for 99% of tracks (median 0.0005), against danceability's much wider spread. A few extreme outliers are squashing everyone else's real variation near zero in the min-max scaling. Not yet fixed.
 - **A third of the library has no lyrics on lrclib, and most of those aren't instrumentals.** Of 7,101 lyric-less tracks, lrclib confirms 1,168 as instrumental. The other 5,103 are simply unknown to it, and the tagger, which sees `Lyrics: not available` for both, tends to describe them all as instrumentals. `track_features.parquet` records which is which (`lyrics_status`). Feeding that status to the fly as two extra inputs was tried and reverted, because it cost 0.05 AUC on unseen tracks ([details](docs/MBON_EVAL.md)). An earlier fetch bug had cached failed requests as "no lyrics". Fixing it recovered lyrics for 830 tracks ([docs/LYRICS.md](docs/LYRICS.md)).
 - **Audio covers 86.4% of the library** (16,741 tracks) after an expansion beyond the original top-3,000 scope. The tagger falls back to its lyrics-only arm for the remaining 13.6%, and every row records which arm produced it.
@@ -92,7 +92,7 @@ Then ask Claude Code something like *"what did I binge in March and then abandon
 
 In September 2026 there was a burst of "fly brain doing X" videos on YouTube, among them [*I Put a Fly's Conscious Brain into Minecraft*](https://youtu.be/BUkLWjcoBc0) and [*I Uploaded A Fruit Fly Brain To Reply To My Emails*](https://youtu.be/GmCbzlb091A). Sadly, the claims of these videos are largely sensational, so take the framing of those titles with some skepticism. What's public is a connectome, not a trained agent, and neither video's claim is something this project relies on or endorses. What they did give me was the idea.. the FlyWire connectome is real, public, and citable, and the actual, defensible result in the 2017 *Science* paper (olfactory circuit as locality-sensitive hash) was sitting right there, unused for anything like this.
 
-Before AI, building on that idea would have meant committing to a 6-12 month project I wouldn't have had the time for. AI condensed that to the few weekends of agent time laid out in the [Project Plan](Selector%20—%20Project%20Plan.md).
+Before AI, building on that idea would have meant committing to a 6-12 month project I wouldn't have had the time for. AI condensed that to the few weekends of agent time laid out in the [Project Plan](Selector%20%E2%80%94%20Project%20Plan.md).
 
 This project was built with Claude Code doing most of the typing, on my own direction. I set the architecture (the four-layer split, the measured-vs-predicted schema, using the FlyWire connectome instead of a random projection), reviewed every component, and made the calls on what to keep, cut, or redo. The reverted lyrics-status feature above is one of several dead ends caught that way. Claude Sonnet 5 also generated the 3,492 distillation labels the vibe tagger's LoRA fine-tune trains on, which makes it part of the ML pipeline itself, not just the tooling around it.
 
@@ -102,7 +102,7 @@ None of this would have shipped solo in the time it took. I'd worked with recomm
 
 I'm a software engineer by day and have experimented with AI-assisted coding a lot. The AI workflow that I employed for a project this size:
 
-1. Write the [Project Plan](Selector%20—%20Project%20Plan.md) myself, in my own words, then go back and forth with an Opus class model until it held up: right scope, real risks named, no overclaiming.
+1. Write the [Project Plan](Selector%20%E2%80%94%20Project%20Plan.md) myself, in my own words, then go back and forth with an Opus class model until it held up: right scope, real risks named, no overclaiming.
 2. Once the plan was solid, have that model turn it into [`PROMPT-PACK.md`](PROMPT-PACK.md): one concrete, scoped prompt per session.
 3. With that much planning and context already on paper, a faster, cheaper model could do most of the actual coding. Each session started the same way: "Read the project plan and prompt N from the prompt pack, and complete it."
 4. Review every diff and doc by hand before moving on.
@@ -122,6 +122,6 @@ A biologist's connectome, a paper from 2017, and a few weekends of evenings were
 
 What this is: the fly's olfactory circuit used as a locality-sensitive hash, per *Science* 2017, wired from the real connectome, plus the mushroom body's plasticity rule trained on skips. A connectome is a wiring diagram, not a trained brain. Nothing here claims a fly brain does general tasks. It is one circuit used as a hash, plus one learning rule.
 
-Not affiliated with or endorsed by Spotify. Non-commercial: no ads, paid tiers or sponsorship, on the site or the MCP server. The public Rewind story at `/rewind` shows an invented listener, never real listening history (a visitor's own Rewind is built in their tab and never leaves it); see [docs/PRIVACY.md](docs/PRIVACY.md).
+Not affiliated with or endorsed by Spotify. Non-commercial: no ads, paid tiers or sponsorship, on the site or the MCP server. The public Rewind story at `/rewind` shows an invented listener, never real listening history (a visitor's own Rewind is built in their tab and never leaves it). See [docs/PRIVACY.md](docs/PRIVACY.md).
 
 MIT licensed. See [LICENSE](LICENSE).

@@ -1,11 +1,11 @@
 """Evaluate the mushroom body's plasticity rule against real listening
 history: does a fly that learns from `verdict` (skip vs. play-out) predict
-held-out skips better than simple historical-rate baselines -- and does it
+held-out skips better than simple historical-rate baselines, and does it
 get better as the track features it's fed get more real?
 
-Trained on 2022-2024 plays, chronologically, tested on 2025-2026 -- never
+Trained on 2022-2024 plays, chronologically, tested on 2025-2026, never
 shuffled, since this is a time series and a random split would leak the
-future into training. Per the prompt pack, per-track history is expected to
+future into training. Per-track history is expected to
 be a strong baseline for tracks seen before, so the table is broken out by
 seen/unseen tracks.
 
@@ -13,10 +13,10 @@ Step 7 ran this comparison once, against a placeholder embedding (noise with
 no real content), since the vibe tagger didn't exist yet. Step 12 re-runs it
 across three feature sources side by side, using `selector.fly.pipeline`:
 
-- **placeholder** -- Step 7's noise embedding, kept as the zero baseline.
-- **text-only** -- the fine-tuned tagger's predicted labels (valence,
+- **placeholder**: Step 7's noise embedding, kept as the zero baseline.
+- **text-only**: the fine-tuned tagger's predicted labels (valence,
   intensity, era, mood_tags), available for every track.
-- **full audio+text** -- text features plus measured DSP features where a
+- **full audio+text**: text features plus measured DSP features where a
   preview clip was matched (Step 12's production feature source).
 
 If the fly does not beat the baselines, or real features don't beat the
@@ -88,7 +88,7 @@ SOURCES: list[tuple[FeatureSource, str]] = [
 def historical_rate_predictor(train: pd.DataFrame, key: str) -> dict[str, float]:
     """Skip rate per `key` (artist_name or track_id) computed on decisive
     (non-neutral) training plays only. Callers fall back to the global rate
-    for keys never seen in training -- this dict simply omits them.
+    for keys never seen in training, this dict simply omits them.
     """
     return train.groupby(key)["is_skip"].mean().to_dict()
 

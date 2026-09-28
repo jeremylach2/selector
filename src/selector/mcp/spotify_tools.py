@@ -201,7 +201,7 @@ def make_read_tools(get_client: Callable[[], SpotifyClient]) -> tuple[Callable[.
         return run_spotify(get_client, _call)
 
     def spotify_top_artists(time_range: str = "medium_term", limit: int = 20) -> str:
-        """List this person's top artists by Spotify's own listening algorithm —
+        """List this person's top artists by Spotify's own listening algorithm,
         distinct from the historical warehouse's `top_artists`, which counts raw
         plays from the export. `time_range` is "short_term" (~4 weeks),
         "medium_term" (~6 months), or "long_term" (years).
@@ -214,7 +214,7 @@ def make_read_tools(get_client: Callable[[], SpotifyClient]) -> tuple[Callable[.
         return run_spotify(get_client, _call)
 
     def spotify_top_tracks(time_range: str = "medium_term", limit: int = 20) -> str:
-        """List this person's top tracks by Spotify's own listening algorithm —
+        """List this person's top tracks by Spotify's own listening algorithm,
         distinct from the historical warehouse's play-count-based queries.
         `time_range` is "short_term" (~4 weeks), "medium_term" (~6 months), or
         "long_term" (years).
@@ -228,7 +228,7 @@ def make_read_tools(get_client: Callable[[], SpotifyClient]) -> tuple[Callable[.
 
     def spotify_recently_played(limit: int = 20) -> str:
         """List the most recently played tracks straight from Spotify's live
-        playback history. This only covers roughly the last 50 plays — for
+        playback history. This only covers roughly the last 50 plays. For
         anything further back, use the historical warehouse tools instead
         (`top_artists`, `taste_drift`, etc.), which cover the full export.
         """
@@ -300,7 +300,7 @@ def spotify_create_playlist(
     """Create a new playlist in this person's Spotify account, kept off
     their profile, optionally pre-filled with `track_uris` (values like
     "spotify:track:...", from `spotify_search` results). This performs a
-    real, immediate write to the user's account with no dry-run mode — only
+    real, immediate write to the user's account with no dry-run mode, only
     call it once the user has clearly asked for a playlist to be created,
     not speculatively. At most 500 tracks per playlist and 20 playlists per
     day. The Spotify app will still list it as Public until the user picks

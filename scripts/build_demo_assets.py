@@ -4,16 +4,16 @@ The demo has no backend: the visitor's export is parsed in their browser and
 the fly brain runs client-side. What it needs from this repo is shipped as
 static files under `web/public/`:
 
-- `fly/catalog.json.gz` -- one row per tagged track: name, artist,
+- `fly/catalog.json.gz`, one row per tagged track: name, artist,
   predicted mood tags and era, and (for the ~3,200 tracks with a matched
   preview) the **measured** tempo, energy and duration the DJ's arc runs on.
   No play counts, skip rates or timestamps: nothing about how the author
   listened, only what the tracks are. Rows are sorted by track id so the
   file order carries no ranking either.
-- `fly/tags.bin.gz` -- every track's fly-brain fingerprint (the 130 active
+- `fly/tags.bin.gz`, every track's fly-brain fingerprint (the 130 active
   Kenyon cells of 2,597) as delta-encoded uint8 gaps, row order matching the
   catalog. The browser rebuilds a bitset from it for Hamming search.
-- `fly/circuit.json.gz` -- what the `/watch` visualiser needs to rerun the
+- `fly/circuit.json.gz`, what the `/watch` visualiser needs to rerun the
   hash live in the browser rather than read the finished tags: the pooled
   FlyWire PN->KC projection exactly as `FlyHash` stored it, the `fit()`
   normalisation statistics, and every catalog track's 24-number input
@@ -21,13 +21,13 @@ static files under `web/public/`:
   preview matched). The build recomputes every tag from this file the way
   the browser will and refuses to write it if any differs from
   `data/fly_tags.npz` outside ties at the winner-take-all cutoff.
-- `fly/rewind.json.gz` -- what `/rewind` needs to build a visitor's own
+- `fly/rewind.json.gz`, what `/rewind` needs to build a visitor's own
   report in the browser: the 12 taste-cluster medoids (as catalog track
   ids) with their feature-built names, library-wide cluster sizes, which
   catalog tracks lack measured audio, and album release years keyed by the
   normalised `(artist, album)` key. All of it is catalog metadata; nothing
   about how the author listened. `--rewind-only` rebuilds just this file.
-- `sample/sample_spotify_data.zip` -- a **synthetic** Extended Streaming History
+- `sample/sample_spotify_data.zip`, a **synthetic** Extended Streaming History
   export in Spotify's real schema, for visitors with no export of their own.
   The listener is invented: tracks are drawn from the catalog around three
   fly-brain neighbourhoods (one per "era"), timestamps come from a made-up
@@ -96,7 +96,7 @@ SAMPLE_TZ_OFFSET_H = -5  # the invented listener lives on US Central-ish time
 
 def _encode_tags(tags) -> bytes:
     """Delta-encode each row's sorted active indices as uint8 gaps. A gap
-    over 255 is written as 0 followed by the gap as little-endian uint16 --
+    over 255 is written as 0 followed by the gap as little-endian uint16,
     the first gap is from -1, so a real gap is never 0."""
     out = bytearray()
     for r in range(tags.shape[0]):

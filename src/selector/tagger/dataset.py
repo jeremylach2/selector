@@ -3,7 +3,7 @@
 
 Splits **by artist, not by track**: every track by a given artist lands in
 exactly one split. Splitting by track would let the model see, say, three
-Pink Floyd tracks in training and a fourth in test — it could then get the
+Pink Floyd tracks in training and a fourth in test, it could then get the
 fourth "right" by memorising Pink Floyd's general vibe rather than by
 reading that track's actual lyrics and features, which would make the eval
 number a measure of artist memorisation, not of the task this component

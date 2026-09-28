@@ -61,8 +61,8 @@ def hamming_top_k(
     can't separate identical tags, so pair it with one that doesn't.
 
     Free function (not a `FlyHash` method) so callers who only have a tag
-    matrix on hand -- e.g. `selector.fly.pipeline`, which persists tags
-    separately from the `FlyHash` that produced them -- don't need to keep a
+    matrix on hand, e.g. `selector.fly.pipeline`, which persists tags
+    separately from the `FlyHash` that produced them, don't need to keep a
     fitted `FlyHash` instance around just to call this. `FlyHash.hamming_neighbours`
     below is a thin wrapper kept for backward compatibility.
 
@@ -142,7 +142,7 @@ class FlyHash:
         """A sparse, unweighted, random PN->KC projection, one row per KC.
 
         Each KC samples `sample_size` distinct PNs uniformly at random and
-        sums their (normalised) activity — connections are binary presence,
+        sums their (normalised) activity. Connections are binary presence,
         not learned weights, matching the biological circuit.
         """
         sample_size = min(self.sample_size, self.d_in)
@@ -164,7 +164,7 @@ class FlyHash:
 
     @projection_matrix.setter
     def projection_matrix(self, matrix) -> None:
-        """Replace the random projection — the seam Step 6 plugs the real
+        """Replace the random projection, the seam Step 6 plugs the real
         FlyWire connectome into. `matrix` must be (n_kc, d_in) shaped and is
         stored as a sparse CSR matrix regardless of the input format.
         """
@@ -184,7 +184,7 @@ class FlyHash:
         are mean-centred and scaled before the projection, which is what
         makes tags comparable across inputs of different overall magnitude
         (a loud, dense track and a quiet, sparse one should not just get
-        "more bits on" — they should be normalised onto the same footing
+        "more bits on"; they should be normalised onto the same footing
         before the circuit compares them). Skipping this step is the most
         common way to silently break the hash.
         """

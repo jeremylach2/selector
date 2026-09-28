@@ -2,7 +2,7 @@
 November 2024 deprecation.
 
 Deliberately does not implement audio-features, audio-analysis,
-recommendations, related-artists, or 30-second preview URLs — Spotify
+recommendations, related-artists, or 30-second preview URLs. Spotify
 removed all of those for new apps, and writing code against them would just
 be a 404 waiting to happen.
 """
@@ -40,7 +40,7 @@ class RequestLogEntry:
 
 @dataclass
 class SpotifyClient:
-    """One client per process is enough — it re-authenticates lazily and
+    """One client per process is enough, it re-authenticates lazily and
     caches the token in memory for the life of the object.
 
     `store` overrides `token_path` (the hosted server passes a Redis
@@ -147,7 +147,7 @@ class SpotifyClient:
         self, name: str, description: str = "", public: bool = False, track_uris: list[str] | None = None
     ) -> dict:
         # Spotify's February 2026 Web API migration removed
-        # `/users/{user_id}/playlists` for Development Mode apps — it now
+        # `/users/{user_id}/playlists` for Development Mode apps, it now
         # returns a bare 403 regardless of scope. `/me/playlists` is the
         # replacement and needs no separate `current_user()` lookup.
         playlist = self._request(
@@ -162,7 +162,7 @@ class SpotifyClient:
     def add_tracks_to_playlist(self, playlist_id: str, track_uris: list[str]) -> dict:
         # The API caps a single add at 100 URIs; chunk anything larger.
         # `/playlists/{id}/tracks` is the other half of the same Feb 2026
-        # migration that killed `/users/{id}/playlists` — the replacement is
+        # migration that killed `/users/{id}/playlists`, the replacement is
         # `/playlists/{id}/items`, same method and body shape.
         result: dict = {}
         for i in range(0, len(track_uris), 100):

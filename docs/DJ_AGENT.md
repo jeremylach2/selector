@@ -28,7 +28,7 @@ result.
 ## The crate: measured, predicted, learned
 
 Only tracks with **measured** audio features are playable. Audio coverage
-was originally the top 3,198 of 19,386 tracks by play count; an expansion
+was originally the top 3,198 of 19,386 tracks by play count. An expansion
 of `selector/audio/resolve.py` to the full library raised that to 16,739
 (see `docs/AUDIO_MATCHING.md`). The arc is a hard constraint, and checking
 it against a model's guess at energy would make it a constraint on nothing.
@@ -68,7 +68,7 @@ as the same pulse, not a 100% jump.
 valence is positive for every crate track, because play-outs outnumber skips
 about 4:1 in the history, so only its rank carries information.
 
-**Familiar vs fresh.** Every crate track has been played, since the crate is
+Familiar vs fresh: Every crate track has been played, since the crate is
 drawn from listening history. So "fresh" honestly means *not played in the
 last 90 days*, i.e. a rediscovery, not an unheard track.
 
@@ -127,8 +127,8 @@ the run still returns its set and notes, but Commit refuses to write it.
 | Context | Theme chosen | First pass | Final |
 |---|---|---|---|
 | Fri 22:00 | peak time | **Reject**: 2 jarring (112→83 BPM, 172→112 BPM) | Pass after revision, 12 tracks, 45.3 min, peak lifts 0.31 |
-| Tue 08:00 | slow sunrise | Pass, 11 tracks, 43.8 min | — |
-| Wed 15:00, `theme="sad rainy day"` | custom (melancholic) | Pass, 12 tracks, 44.1 min | — |
+| Tue 08:00 | slow sunrise | Pass, 11 tracks, 43.8 min | n/a |
+| Wed 15:00, `theme="sad rainy day"` | custom (melancholic) | Pass, 12 tracks, 44.1 min | n/a |
 
 Across a wider sweep of seven contexts during tuning, 4 of 7 first passes
 were rejected. All 7 passed after one revision.

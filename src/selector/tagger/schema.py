@@ -18,7 +18,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 # Read from data/audio_features.parquet. Listed here for documentation, not
-# validated by this model — they're numeric columns produced by DSP, not
+# validated by this model, they're numeric columns produced by DSP, not
 # structured output from a model call.
 MEASURED_FEATURES = ("tempo", "energy", "acousticness", "instrumentalness", "danceability")
 
@@ -40,7 +40,7 @@ Era = Literal["pre-1970", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s"]
 
 class PredictedLabels(BaseModel):
     """The teacher's (or student's) output for one track: everything that
-    has to be inferred from lyrics, metadata, and — where available — the
+    has to be inferred from lyrics, metadata, and, where available, the
     measured audio features, rather than read off a sensor."""
 
     valence: float = Field(ge=0.0, le=1.0, description="Emotional positivity, 0=negative, 1=positive")
@@ -53,7 +53,7 @@ class PredictedLabels(BaseModel):
 class TeacherInput(BaseModel):
     """Everything the teacher sees for one track: identity, whatever context
     enrich.py could gather, and the measured features when a preview clip
-    was matched — a null lyric or a missing measured feature is a valid
+    was matched, a null lyric or a missing measured feature is a valid
     input, not an error, since coverage is expected to be partial."""
 
     track_id: str

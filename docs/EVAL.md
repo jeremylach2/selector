@@ -26,7 +26,7 @@ track. Fine-tuning is what turns this 0.6B model into a usable tagger.
 
 These are point estimates from one test split with no significance test yet
 (see "Still open"). The intensity gain from audio is large enough to be
-believable; the valence gain should be read as suggestive until a paired
+believable. The valence gain should be read as suggestive until a paired
 bootstrap confirms it. The gap between fine-tuned and zero-shot is large
 enough that no test is needed to believe it.
 
@@ -37,8 +37,8 @@ by artist, see `dataset.py`). Train split: 2,359 tracks.
 
 | Row | n | valence MAE ↓ | intensity MAE ↓ | era match ↑ | mood_tags exact ↑ | parse fail |
 |---|---|---|---|---|---|---|
-| Teacher self-consistency (ceiling) | 199 | 0.017 | 0.022 | 90.5% | 64.8% | — |
-| Trivial train-mean baseline (floor) | 487 | 0.163 | 0.120 | 42.3% | 6.4% | — |
+| Teacher self-consistency (ceiling) | 199 | 0.017 | 0.022 | 90.5% | 64.8% | n/a |
+| Trivial train-mean baseline (floor) | 487 | 0.163 | 0.120 | 42.3% | 6.4% | n/a |
 | Untuned base model, raw prompt, arms A/B/C | 50 | 0.153 | 0.127 | 42.0% | 6.0% | 100% |
 | Untuned base model, instructed zero-shot, arm A | 487 | 0.277 | 0.408 | 17.2% | 2.3% | 3.9% |
 | Untuned base model, instructed zero-shot, arm B | 487 | 0.246 | 0.277 | 23.6% | 0.4% | 0.0% |
@@ -46,7 +46,7 @@ by artist, see `dataset.py`). Train split: 2,359 tracks.
 | Fine-tuned, arm A (lyrics + metadata) | 487 | 0.106 | 0.094 | 61.4% | 18.5% | 0.6% |
 | Fine-tuned, arm B (audio + metadata) | 487 | 0.157 | 0.104 | 61.2% | 9.2% | 0.8% |
 | **Fine-tuned, arm C (lyrics + audio + metadata)** | 487 | **0.096** | **0.073** | **61.8%** | **18.9%** | 0.8% |
-| Measured audio (tempo, energy, ...) | — | N/A by design: read from `data/audio_features.parquet`, never predicted | | | | |
+| Measured audio (tempo, energy, ...) | n/a | N/A by design: read from `data/audio_features.parquet`, never predicted | | | | |
 
 **Spearman correlation** (rank agreement with the teacher, higher is
 better) was only printed for the zero-shot run:
@@ -59,7 +59,7 @@ better) was only printed for the zero-shot run:
 
 Even ranking tracks relative to each other, which ignores the model's
 upward bias, is close to chance. The fine-tuned rows' Spearman values
-weren't printed in the main run; rerunning them with `--tuned-only` would
+weren't printed in the main run. Rerunning them with `--tuned-only` would
 fill that in (see "Still open"). The baseline's Spearman is undefined,
 because it predicts the same value for every track.
 
@@ -87,7 +87,7 @@ inputs.
   very stable on valence and intensity (MAE ≈ 0.02) and agrees on the exact
   mood-tag set 64.8% of the time (mean Jaccard 0.84), so mood_tags is
   subjective but far from arbitrary. An earlier 10-track estimate put the
-  mood ceiling at 30%; the 200-track number replaces it.
+  mood ceiling at 30%. The 200-track number replaces it.
 - **Trivial train-mean baseline (floor).** Predicts the train split's mean
   valence/intensity and modal era/mood_tags/theme for every test track,
   ignoring the input. Anything trained should clear it.
@@ -166,12 +166,12 @@ at this model size, the labels have to be taught.
 
 ## Setup
 
-**Labels.** `data/labels.jsonl`: 3,492 tracks labelled by the teacher,
+Labels: `data/labels.jsonl`: 3,492 tracks labelled by the teacher,
 `claude-sonnet-5` (top 3,000 by play count plus a 500-track stratified
 sample from the 1–2-play tail, 8 schema-validation failures dropped). 91.4% of them have measured audio
 features. See `docs/DATA_FIX_PLAN.md` for how this set was rebuilt and why.
 
-**The supplemental tail sample.** The top 3,000 tracks by play count are
+The supplemental tail sample. The top 3,000 tracks by play count are
 effectively "played 3+ times", which leaves out the 80% of the library
 played only once or twice. To get some of that tail into the labels, 500
 tracks with `play_count <= 2` were sampled at random: 250 skipped every time
@@ -211,13 +211,13 @@ needs the fine-tuned rows' per-example predictions, which come from the
 optional `--tuned-only` run (see "Still open").
 
 The teacher labels describe the song, not how this listener reacted to it.
-"Skipped once" says something about the listener; it isn't a label.
+"Skipped once" says something about the listener. It isn't a label.
 
-**Split.** By artist, never by track, so the model can't score well by
+Split: By artist, never by track, so the model can't score well by
 memorising artists: 2,359 train / 646 val / 487 test, 790 / 169 / 170
-artists. Identical across arms; only the prompt differs.
+artists. Identical across arms. Only the prompt differs.
 
-**Training.** `Qwen/Qwen3-0.6B`, LoRA r=8, alpha=16, targets `q_proj` and
+Training: `Qwen/Qwen3-0.6B`, LoRA r=8, alpha=16, targets `q_proj` and
 `v_proj`, 3 epochs, CPU-only (Ryzen 5 3600). Prompt tokens are masked out of
 the loss. Examples whose completion would be fully truncated at
 `max_length=768` are dropped (see "Bugs"), which is why A and C train on
@@ -233,7 +233,7 @@ The eval_loss ordering (C < A < B) matches the task-level ordering in the
 main table, but eval_loss is next-token perplexity on the label JSON, not
 correctness. The main table is the real answer.
 
-**Eval.** `selector.tagger.eval`. Greedy decoding, `max_new_tokens=80` for the
+Eval: `selector.tagger.eval`. Greedy decoding, `max_new_tokens=80` for the
 raw-prompt rows (true completion lengths: min 48, p99 67, max 70 tokens),
 120 for zero-shot (the instructed model pretty-prints and wraps the JSON in
 a code fence). Generation stops as soon as one complete `{...}` object has
@@ -248,7 +248,7 @@ fine-tuned generations), and roughly 7h for the zero-shot run (3 × 487),
 which has longer prompts and outputs. The stopping criterion only checks
 brace balance, not schema validity, so it still fires early on most
 zero-shot failures (over-length `lyrical_theme`, bad `mood_tags`/`era` -
-48 of the 53, see below); only the 5 cut-off/malformed ones ran the full
+48 of the 53, see below). Only the 5 cut-off/malformed ones ran the full
 120-token budget.
 
 ## Bugs found and fixed along the way
@@ -274,18 +274,18 @@ The first round of fine-tunes (adapters preserved in
 tracks (6.6%) had any measured audio, because audio matching had only been
 run for a 200-track pilot. 93% of arm B's training prompts said
 `Measured audio features: none available`, so that round couldn't answer the
-audio question at all. It never got a task-level eval; its eval_loss values
+audio question at all. It never got a task-level eval. Its eval_loss values
 aren't comparable to the table above (different label set and split). The
 data fix and its reasoning are in `docs/DATA_FIX_PLAN.md`.
 
 ## GPU inference, latency, and cost
 
 CPU generation is far too slow to tag all 19,386 warehouse tracks (a
-day-plus of wall time at the measured CPU rate - see below), so `infer.py`'s
+day-plus of wall time at the measured CPU rate, see below), so `infer.py`'s
 real inference path runs through llama.cpp's Vulkan backend instead of the
 CPU path this doc's main table used. The full setup, the parity check that
 justified trusting it, and the reproduction commands are in
-`docs/GPU_INFERENCE.md`; summarised here:
+`docs/GPU_INFERENCE.md`. Summarised here:
 
 **Single-request median generation latency** (`n_predict=80`, greedy):
 
@@ -303,16 +303,16 @@ test split during the parity check below).
 **JSON-validity rate** is the complement of `parse_fail` in the main table
 above: 99.4% for arm A, 99.2% for arm B, 99.2% for arm C on CPU.
 
-**Cost per thousand tracks vs the teacher.** The teacher
+Cost per thousand tracks vs the teacher. The teacher
 (`claude-sonnet-5`) costs $5.03 per thousand tracks (`docs/TEACHER.md`).
-The fine-tuned student has no equivalent per-call cost once trained - it
+The fine-tuned student has no equivalent per-call cost once trained, it
 runs locally with no metered API in the loop, so the honest framing is that
 the teacher's cost was a one-time price for ~3,500 labelled training
 examples, and every track inferred afterwards (the other ~15,900, or any
 future one) is free at the margin. See `docs/GPU_INFERENCE.md` for the
 fuller version of this argument.
 
-**Parity check.** Before trusting the GPU path, the same 487-track test
+Parity check: Before trusting the GPU path, the same 487-track test
 split was re-scored through both arm servers and compared against the CPU
 rows above. Every metric landed within noise (≤0.001 MAE, ≤0.8 percentage
 points on match rates) - full table in `docs/GPU_INFERENCE.md`.
@@ -320,7 +320,7 @@ points on match rates) - full table in `docs/GPU_INFERENCE.md`.
 ## Llama-3.2-1B: dropped
 
 The comparison model was never trained. It needed the same CPU-only LoRA
-pipeline as Qwen3-0.6B (training has no GPU path here - llama.cpp is
+pipeline as Qwen3-0.6B (training has no GPU path here, llama.cpp is
 inference-only, see `docs/GPU_INFERENCE.md`), which would mean a second
 multi-hour-per-arm CPU fine-tune run for a model roughly 1.7x the parameter
 count, on top of the three arms already trained. Decided with the project
@@ -328,7 +328,7 @@ owner (2026-09-23) to drop it rather than spend that time: Qwen3-0.6B
 already answers this component's headline question (does fine-tuning work,
 and does audio help), a second base model's main plausible contribution -
 showing whether a bigger sub-1B model closes more of the floor-to-ceiling
-gap - is a real question but a secondary one, and the eval table's honesty
+gap, is a real question but a secondary one, and the eval table's honesty
 doesn't depend on having it. Left here rather than silently dropped, per
 this doc's own standard for reporting what wasn't run and why.
 
@@ -354,8 +354,8 @@ fine-tuned prediction from a fallback rather than treating them the same.
 **Update: audio expansion.** The rows above originally reflected the
 top-3,000-by-play-count audio scope (16.5% arm C). `docs/AUDIO_MATCHING.md`'s
 resolve pipeline was re-run over the full warehouse, taking audio coverage
-to 86.4%; the 13,541 tracks that gained a match were re-tagged with the
-audio arm via `infer.py --retag-ids` (GPU inference only — no new teacher
+to 86.4%. The 13,541 tracks that gained a match were re-tagged with the
+audio arm via `infer.py --retag-ids` (GPU inference only, no new teacher
 labels, so the cost figures in `docs/TEACHER.md` are unaffected). The
 numbers above are post-expansion. Effect on the fly brain and skip
 prediction: `docs/MBON_EVAL.md`.

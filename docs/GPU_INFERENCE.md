@@ -12,7 +12,7 @@ what did, and the parity check that justified trusting it.
 The dev machine's GPU is an AMD Radeon RX 5600 XT (RDNA1, `gfx1010`). Two
 routes were tried and abandoned before landing on llama.cpp:
 
-- **ROCm.** No RDNA1 support on Windows - AMD's official ROCm Windows
+- **ROCm.** No RDNA1 support on Windows, AMD's official ROCm Windows
   builds start at RDNA2. Dead end.
 - **`torch-directml`.** Works, but pins `torch` to 2.4.1, which is
   incompatible with the `transformers` version Qwen3 needs (Qwen3 support
@@ -28,8 +28,8 @@ routes were tried and abandoned before landing on llama.cpp:
 
 llama.cpp's Vulkan backend runs on essentially any GPU with a working
 Vulkan driver, RDNA1 included, and needs no ROCm or CUDA. It's inference
-only - no training path - which is fine, since only `infer.py`'s generation
-step needs to move off CPU; training (Step 11's LoRA fine-tune) already
+only, no training path, which is fine, since only `infer.py`'s generation
+step needs to move off CPU. Training (Step 11's LoRA fine-tune) already
 finished on CPU.
 
 **No compiler installed on this machine (no cmake, no MSVC/Visual Studio
@@ -55,7 +55,7 @@ git read-tree -mu HEAD
 ```
 
 Build-tag `b11149` was simply "whatever the newest build was" on
-2026-09-23 - pin to a specific tag rather than always grabbing latest, so
+2026-09-23, pin to a specific tag rather than always grabbing latest, so
 a future re-run of this doc's commands doesn't silently pick up a different
 build.
 
@@ -64,7 +64,7 @@ build.
 llama.cpp's GGUF conversion only reads plain (non-PEFT) HF checkpoints, so
 each arm's adapter has to be merged into the base weights first
 (`scripts/merge_adapters.py`, `PeftModel.merge_and_unload()`), saved to
-`data/runs/{A,B,C}/merged/`. Arm B was skipped - it's never the winning
+`data/runs/{A,B,C}/merged/`. Arm B was skipped, it's never the winning
 arm (C) or the fallback arm (A) that `infer.py` actually uses, and merging
 + converting it would burn time on a model this project doesn't serve.
 
@@ -77,7 +77,7 @@ uv run --with gguf --with sentencepiece --with protobuf `
 # repeat for A
 ```
 
-`f16`, no quantisation - the point of this exercise is a faster path to the
+`f16`, no quantisation, the point of this exercise is a faster path to the
 *same* predictions the CPU eval already validated, not a smaller or lower-
 precision model. The parity check below confirms f16 GGUF doesn't move the
 numbers.
@@ -107,14 +107,14 @@ silently: while a generation request was in flight, Windows'
 
 The client side: `generate_completion_gpu()` POSTs to `/completion` with
 the same raw-prompt framing as `selector.tagger.dataset.build_prompt` +
-`"\n"` (no chat template - the adapters were trained on a raw
+`"\n"` (no chat template, the adapters were trained on a raw
 continuation) and greedy decoding (`temperature=0, top_k=1`, matching
 `do_sample=False` on the CPU path). It doesn't replicate the CPU path's
 early-stop-on-balanced-JSON stopping criterion - `n_predict` just runs to
 the same budget CPU used (80 tokens), and `selector.tagger.eval._parse_prediction`
 already extracts only the first complete JSON object and ignores whatever
 comes after, so a few extra generated tokens change nothing about the
-label. On GPU the extra tokens cost tens of milliseconds; on CPU they were
+label. On GPU the extra tokens cost tens of milliseconds. On CPU they were
 worth avoiding because they compounded into hours (see `docs/EVAL.md`
 "Bugs found").
 
@@ -138,7 +138,7 @@ through both arm servers (4 concurrent requests each, matching
 | C | mood_tags exact | 18.9% | 18.7% | −0.2pp |
 | C | parse fail | 0.8% | 1.4% | +0.6pp |
 
-Every delta is inside noise - sub-0.001 on the MAE metrics, under 1
+Every delta is inside noise, sub-0.001 on the MAE metrics, under 1
 percentage point on the match rates, consistent with f16-vs-f32 rounding
 and greedy decoding's sensitivity to near-tied logits rather than any real
 behaviour change. The GPU path was trusted for `infer.py`'s full run on
@@ -166,7 +166,7 @@ real observed throughput is in this range, not the single-request number.
 
 At the single-request CPU rate, 19,386 tracks would take
 19,386 x 13.34s ≈ 71.8 hours (~3 days). At the concurrent GPU rate it's
-under 2 hours - see `docs/EVAL.md` for the actual run's wall time once
+under 2 hours, see `docs/EVAL.md` for the actual run's wall time once
 `infer.py`'s full pass has completed.
 
 ## Cost per thousand tracks vs the teacher
@@ -201,4 +201,4 @@ uv run python -m selector.tagger.infer
 
 `tools/` (the llama.cpp binaries and sparse source checkout) and
 `data/runs/*/merged/` (merged weights + GGUF files, several GB) are
-gitignored - reproducible from this doc, not meant to be committed.
+gitignored, reproducible from this doc, not meant to be committed.

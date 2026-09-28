@@ -97,7 +97,7 @@ def test_dissimilar_tags_are_unaffected_by_unrelated_learning():
     far_valence_after = mbon.valence(far_tag)
 
     # A tag with no overlap in active KCs should be untouched by learning on
-    # a completely different tag -- generalisation only happens through
+    # a completely different tag, generalisation only happens through
     # shared active cells.
     if not (set(base_tag.indices) & set(far_tag.indices)):
         assert far_valence_after == pytest.approx(far_valence_before)

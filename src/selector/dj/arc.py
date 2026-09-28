@@ -7,7 +7,7 @@ tracks within `tolerance` of the target at the point in the set where the
 track would play, and Critique rejects a set whose realised curve leaves
 the band.
 
-Energy here is `selector.dj.pool.measured_energy` -- DSP loudness, onset
+Energy here is `selector.dj.pool.measured_energy`, DSP loudness, onset
 density and spectral brightness from the Step 9 audio features, rank-
 normalised over the crate. Predicted labels never enter the arc.
 

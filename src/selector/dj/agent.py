@@ -6,7 +6,7 @@ inspectable end to end: `data/dj_runs/<timestamp>-<theme>.json` holds the
 brief, the arc curve, every Select step's shortlist, each critique verdict,
 the revision (if there was one) and the commit result, with the liner notes
 beside it as `.md`. That log is the demo: it shows a plan being made,
-checked, and -- when the check fails -- revised.
+checked, and, when the check fails, revised.
 
 Critique may send the set back to Select **once**. If the revision also
 fails, the run still returns its best set and notes (useful as a dry run),

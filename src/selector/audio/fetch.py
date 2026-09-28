@@ -1,6 +1,6 @@
 """Download and cache audio preview clips.
 
-Called by ``selector.audio.resolve`` immediately after a match is scored —
+Called by ``selector.audio.resolve`` immediately after a match is scored,
 Deezer preview URLs are signed and time-limited, so a clip is downloaded the
 moment it's found, never stored as a URL for a later fetch. Caching by
 ``track_id`` means a crash or a re-run only ever costs the batch in flight;
@@ -44,7 +44,7 @@ def existing_preview_path(track_id: str) -> Path | None:
 def download_preview(client: httpx.Client, url: str, track_id: str) -> str | None:
     """Download `url` to `data/audio/{track_id}.{ext}`, skipping if cached.
 
-    Returns the local path as a string, or None if the download failed —
+    Returns the local path as a string, or None if the download failed,
     callers treat a failed download as "no match", not a fatal error, since
     one bad preview shouldn't stop resolution of the other ~3000 tracks.
     """

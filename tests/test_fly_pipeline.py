@@ -60,7 +60,7 @@ def _track_features_frame() -> pd.DataFrame:
 
 
 def _audio_features_frame() -> pd.DataFrame:
-    # Only t1 has a matched preview clip -- t2/t3 must fall back to zeros
+    # Only t1 has a matched preview clip, t2/t3 must fall back to zeros
     # plus has_measured=0 in the "full" source.
     return pd.DataFrame(
         [

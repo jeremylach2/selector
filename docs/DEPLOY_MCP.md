@@ -1,7 +1,7 @@
 # Deploying the Selector MCP server to Vercel
 
 `docs/INSTALL_MCP.md` covers the stdio server for local Claude Code/Desktop
-use. This covers a second, independent entrypoint — `api/index.py` — that
+use. This covers a second, independent entrypoint, `api/index.py`, that
 exposes the warehouse tools and the live Spotify tools, including playlist
 creation, over Streamable HTTP so the server is reachable from anywhere,
 not just this machine.
@@ -75,7 +75,7 @@ the existing Blob store because it has atomic `SET NX` and `INCR`.
 
 ## What was added
 
-- `src/selector/mcp/warehouse_tools.py` — the nine read-only warehouse tools
+- `src/selector/mcp/warehouse_tools.py`, the nine read-only warehouse tools
   and their formatting helpers, importing nothing outside
   `requirements.txt`. `server.py` and `http_server.py` both register these
   same functions, so tool definitions never drift between the stdio and
@@ -83,42 +83,42 @@ the existing Blob store because it has atomic `SET NX` and `INCR`.
   from `api/index.py` and fails if anything it can reach needs a package
   `requirements.txt` doesn't install. That's how a deploy once crashed on
   every request with `No module named 'scipy'`.
-- `src/selector/mcp/spotify_tools.py` — the live Spotify tools. The five
+- `src/selector/mcp/spotify_tools.py`, the live Spotify tools. The five
   read tools are built once per transport from the same definitions: the
   stdio server binds them to the local token file, the hosted server to
   the Redis store. The hosted `spotify_create_playlist` is its own
   function with the guardrails below.
-- `src/selector/spotify/remote_store.py` — `RedisTokenStore`, the
+- `src/selector/spotify/remote_store.py`, `RedisTokenStore`, the
   encrypted Redis token store, and a minimal Upstash REST client over
   `httpx`.
-- `src/selector/mcp/http_server.py` — registers those tools (and never
+- `src/selector/mcp/http_server.py`, registers those tools (and never
   imports `server.py`) on its own `deploy_server`,
   exposes it as an ASGI `app` via
   `deploy_server.streamable_http_app(stateless_http=True)`, with the SDK's
   OAuth routes and token check wired to `oauth.py`.
-- `src/selector/mcp/oauth.py` — the OAuth provider: client registration,
+- `src/selector/mcp/oauth.py`, the OAuth provider: client registration,
   the Spotify login leg and its callback, and the MCP codes and tokens in
   Redis. See [Auth](#auth).
-- `api/index.py` — the Vercel Python function entrypoint; puts `src/` on
+- `api/index.py`, the Vercel Python function entrypoint. Puts `src/` on
   `sys.path`, downloads the deploy warehouse to `/tmp` on cold start,
   points `SELECTOR_DB` at it, and re-exports that `app`. If the download
   fails the server still starts, and every tool answers that the warehouse
   is missing.
-- `src/selector/mcp/deploy_data.py` — the Blob side: `fetch` (used by the
+- `src/selector/mcp/deploy_data.py`, the Blob side: `fetch` (used by the
   function) and `upload` (run locally), speaking the Blob HTTP API with
   `httpx` so the function needs no Node package. `upload` refuses any file
   that has a `plays` or `sessions` table or a time column, so the full
   warehouse can't be pushed by mistake.
-- `requirements.txt` (repo root) — a deliberately minimal dependency list
+- `requirements.txt` (repo root), a deliberately minimal dependency list
   for this one function. `pyproject.toml`'s full dependency set includes
   librosa/torch/scikit-learn/matplotlib for local ingestion and tagging
-  work the deployed tools never touch; pulling those into the Vercel bundle
+  work the deployed tools never touch. Pulling those into the Vercel bundle
   would cost bundle size and cold-start time for nothing.
-- `vercel.json` — routes every path to `api/index.py`, since the MCP
+- `vercel.json`, routes every path to `api/index.py`, since the MCP
   Starlette app handles its own internal routing (`/mcp`). Its
   `ignoreCommand` decides which Git pushes build (see
   [Deploying](#deploying)).
-- `.vercelignore` — controls what a CLI deploy uploads, separately from
+- `.vercelignore`, controls what a CLI deploy uploads, separately from
   `.gitignore`. It's an allowlist: everything is ignored except `api/`,
   `src/`, `requirements.txt` and `vercel.json`, and no data at all. It used
   to be a blocklist, which let `web/.env.local`, `data/wrapped_private/`
@@ -180,17 +180,17 @@ deletes every MCP token, code and pending login, immediately.
 Spotify token. Rotating `SELECTOR_TOKEN_KEY` makes everything in Redis
 unreadable at once, and forces a fresh login.
 
-**The old static bearer is retired.** `SELECTOR_MCP_TOKEN` is no longer
+The old static bearer is retired. `SELECTOR_MCP_TOKEN` is no longer
 set on production, so OAuth is the only way in. `oauth.py` would still
 accept it as an access token if it were set again, which is how clients
 were moved over one at a time.
 
 The SDK's built-in DNS-rebinding protection is explicitly disabled
-(`enable_dns_rebinding_protection=False` in `http_server.py`) — it checks
+(`enable_dns_rebinding_protection=False` in `http_server.py`), it checks
 the `Host` header against an allowlist meant for a server bound to
 `localhost`, and would reject every real request against a Vercel domain.
 That protection defends against a browser being tricked into hitting a
-*local* MCP server from a malicious page; it doesn't apply here, where the
+*local* MCP server from a malicious page. It doesn't apply here, where the
 OAuth tokens are the actual access control.
 
 ## Live Spotify tools

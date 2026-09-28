@@ -1,7 +1,6 @@
 """Taste clusters over the fly brain's Kenyon-cell fingerprints.
 
-Stage 5 of the Wrapped extension plan (`Selector - Project Extension
-Plan.md`): cluster every track's fingerprint (`data/fly_tags.npz`) by
+Taste clustering for the Wrapped report: cluster every track's fingerprint (`data/fly_tags.npz`) by
 Hamming distance with seeded k-medoids, then give each cluster a name built
 from its features. No model is involved in the name, so the same logic
 ports to the browser demo; `selector.fly.cluster_names` optionally layers a
@@ -46,7 +45,7 @@ CLUSTER_CONFIG = {
 # Built-name thresholds. A mood tag names a cluster only if at least this
 # share of the cluster's tracks carry it. An era names it only if it holds at
 # least NAME_MIN_ERA_SHARE of the cluster *and* is over-represented by
-# NAME_MIN_ERA_LIFT versus the library -- 2010s is ~2/3 of the library, so a
+# NAME_MIN_ERA_LIFT versus the library, 2010s is ~2/3 of the library, so a
 # 2010s majority alone says nothing. Energy is named only when the cluster's
 # mean intensity sits this many library standard deviations from the mean.
 NAME_MIN_TAG_RATE = 0.25

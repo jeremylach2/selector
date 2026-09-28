@@ -2,7 +2,7 @@
 
 These assume `uv run python -m selector.ingest.load_history` and
 `uv run python -m selector.warehouse.build` have already been run, matching
-the "done when" criteria for Steps 1-2 of the prompt pack.
+the documented setup steps.
 """
 
 import pytest

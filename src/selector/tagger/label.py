@@ -5,7 +5,7 @@ schema for each track.
 Batches, caches by track_id (so a re-run only pays for tracks not already
 labelled), checkpoints to JSONL after every batch, and logs running token
 spend. Structured output is enforced by forcing a single tool call whose
-input schema is `PredictedLabels.model_json_schema()` — Anthropic's API has
+input schema is `PredictedLabels.model_json_schema()`. Anthropic's API has
 no separate "JSON mode", so a forced tool call is the standard way to get
 schema-validated output back.
 

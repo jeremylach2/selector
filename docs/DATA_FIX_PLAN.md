@@ -2,7 +2,7 @@
 
 A self-contained runbook for fixing the vibe tagger's training data and
 finishing Step 11/12's eval table. Written so a session with no prior
-context can execute it end to end — background docs are linked, not
+context can execute it end to end, background docs are linked, not
 assumed to be already read, but each step below has the exact command to
 run and how to tell it worked.
 
@@ -14,7 +14,7 @@ run and how to tell it worked.
   has 3,000 rows, 91.5% match rate (2,745/3,000). `docs/AUDIO_MATCHING.md`
   updated with the full-scope numbers, including an operational finding
   that the iTunes Search API started returning HTTP 403 partway through
-  the run (rate-limited at this request volume) — Deezer picked up the
+  the run (rate-limited at this request volume), Deezer picked up the
   slack via the existing fallback logic, so the overall match rate wasn't
   hurt, but iTunes's share of matches dropped from ~60% (pilot) to ~20%
   (full run). See that doc's "Matched source split" section for detail.
@@ -24,7 +24,7 @@ run and how to tell it worked.
   `data/audio_features.parquet` has 2,745 rows, 94 columns, 100% with
   Essentia features. Note for any future WSL invocation: from this repo's
   Bash tool (Git Bash/MSYS), a `/mnt/d/...` path argument gets mangled by
-  MSYS path translation before reaching `wsl.exe` — run via PowerShell
+  MSYS path translation before reaching `wsl.exe`, run via PowerShell
   instead, or set `MSYS_NO_PATHCONV=1` first if using Git Bash.
 - **Step 4 (supplemental tail sample):** done.
   - Added `track_ids`/`--track-ids-file` support to `selector/audio/resolve.py`
@@ -34,7 +34,7 @@ run and how to tell it worked.
   - Resolved audio for those 500 (90.6% match rate, 453/500), bringing the
     combined pool to 3,500 tracks / 3,198 matched.
   - Reran librosa + Essentia + merge over the full combined 3,198-track pool
-    (required by the Step 3 rescaling gotcha — not incremental).
+    (required by the Step 3 rescaling gotcha, not incremental).
   - **Bug found and fixed along the way:** `features_essentia.py`'s
     `extract_features` only caught `RuntimeError` from the audio loader, not
     exceptions from model inference. One clip in the supplemental batch
@@ -56,15 +56,15 @@ run and how to tell it worked.
   investigated further), **91.4% (3,190/3,492) now have measured audio
   features**, up from 6.6% (198/3,000) before this plan. 6.0M input /
   558K output tokens total. Note: `label.py`'s `DEFAULT_MODEL` is
-  `claude-sonnet-5`, not Haiku as this doc's original cost estimate assumed
-  — actual cost wasn't verified against the $4-9 estimate, flag for Step 8.
+  `claude-sonnet-5`, not Haiku as this doc's original cost estimate assumed.
+  Actual cost wasn't verified against the $4-9 estimate, so flag it for Step 8.
 - **Step 6 (retrain arms A/B/C): done.** Pre-flight check caught that
   `data/splits/*.jsonl` were stale (built from the old pilot labels, dated
-  before Step 5's regeneration) — `train.py` only reads pre-built split
+  before Step 5's regeneration), `train.py` only reads pre-built split
   files, it doesn't call `dataset.write_split_files` itself, so this would
   have silently trained on old data. Regenerated all three arms' splits
   from the new `data/labels.jsonl` (2,359 train / 646 val / 487 test each,
-  790/169/170 artists — no artist crosses a split). Verified Arm B's train
+  790/169/170 artists, no artist crosses a split). Verified Arm B's train
   split: only 8.6% (202/2,359) of prompts now say "none available" (was
   ~93% before the fix). All train completions validate against
   `PredictedLabels`.
@@ -88,11 +88,11 @@ run and how to tell it worked.
 
   A's and C's `n_train`/`n_val` are below the 2,359/646 split-file counts
   because `_drop_fully_masked` drops examples whose completion is fully
-  truncated at `max_length=768` — expected for the two arms with the
-  longest prompts (lyrics-bearing); B's short audio-feature prompts never
+  truncated at `max_length=768`, expected for the two arms with the
+  longest prompts (lyrics-bearing). B's short audio-feature prompts never
   hit the cap. eval_loss ordering (C lowest, B highest) matches the
   original pilot's ordering and is a reasonable prior, but it's next-token
-  perplexity on the label JSON, not a task-level score — Step 7's
+  perplexity on the label JSON, not a task-level score, Step 7's
   MAE/Spearman/exact-match table is the real answer to "does audio help."
 - **Step 7 (implement `evaluate_model`, run the real eval table): done
   2026-09-23.** Results are in `docs/EVAL.md`, raw logs in
@@ -104,7 +104,7 @@ run and how to tell it worked.
   `_load_model_and_tokenizer` (base model, optional `PeftModel` adapter),
   `_generate_completion` (free-generation, not teacher-forced),
   `_parse_prediction` (extracts the first balanced JSON object via
-  `json.JSONDecoder.raw_decode` — `rfind("}")` was tried first and is
+  `json.JSONDecoder.raw_decode`, `rfind("}")` was tried first and is
   wrong, see below), and `evaluate_model` (wires it all into
   `evaluate_predictions`, falling back to the train-mean baseline on a
   parse failure rather than dropping it, tracked via
@@ -117,7 +117,7 @@ run and how to tell it worked.
      `train.py` never appends an EOS token to a training completion (see
      `_format_example`), so at inference the fine-tuned model has no
      learned stop signal and keeps generating past a complete, valid JSON
-     object — in practice trailing into a second lookalike object. That
+     object, in practice trailing into a second lookalike object. That
      made every fine-tuned prediction unparseable (100% `parse_failure_rate`
      in a smoke test) even though the model's actual output was correct.
      Fixed by using `json.JSONDecoder().raw_decode` to grab just the first
@@ -129,20 +129,20 @@ run and how to tell it worked.
      `_JSONCompleteStoppingCriteria` (halts as soon as the generated text
      contains one balanced `{...}`) and tightened `max_new_tokens` to 80
      (verified against the true completion-length distribution across all
-     3,492 labels: min 48, p99 67, max 70 tokens — 80 is a safe margin,
+     3,492 labels: min 48, p99 67, max 70 tokens, 80 is a safe margin,
      not a loose one). Cut fine-tuned-row generation to ~14s/example.
      Investigated GPU offload (this machine's AMD RX 5600 XT is RDNA1, no
-     ROCm on Windows or Linux) — `torch-directml` does see the card, but
+     ROCm on Windows or Linux), `torch-directml` does see the card, but
      force-downgrades `torch` to 2.4.1, which is incompatible with the
-     `transformers` version needed for Qwen3 support; reverted via
+     `transformers` version needed for Qwen3 support. Reverted via
      `uv sync --extra finetune`, no lasting effect on the environment.
      Not pursued further this session (llama.cpp + Vulkan would likely
-     work but needs a real rewrite of the generation path - flagged as a
+     work but needs a real rewrite of the generation path, flagged as a
      future option, not attempted).
 
   **Realistic runtime with fixes applied: ~15h**, not the plan's original
   1.5-2h estimate, because the untuned-base-model row never triggers the
-  early-stop (it never emits valid JSON at all - see
+  early-stop (it never emits valid JSON at all, see
   `_JSONCompleteStoppingCriteria`'s docstring) and always burns the full
   80-token budget: ~9.3h for the 3 untuned rows + ~5.7h for the 3
   fine-tuned rows.
@@ -224,7 +224,7 @@ two problems with that run:
    (`checkpoint-2068`, `checkpoint-4136`) were never backfilled the same
    way, even though the checkpoints are still on disk.
 
-Additionally, a follow-up question raised a **class-imbalance concern**:
+A follow-up question raised a **class-imbalance concern**:
 the label set is the top 3,000 tracks *by play count*, which the
 warehouse data shows is effectively "played 3+ times" — 84.5% of the
 19,386-track library (15,561 tracks, 80% of the whole library) has only

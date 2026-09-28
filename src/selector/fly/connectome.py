@@ -41,7 +41,7 @@ DEFAULT_CACHE_DIR = Path("data/flywire")
 # for how these were identified). ALPN = antennal lobe projection neuron,
 # the real olfactory PN population; it includes both the uniglomerular PNs
 # that carry the primary per-glomerulus olfactory channel and multiglomerular
-# PNs that pool across glomeruli -- both are real inputs to the mushroom
+# PNs that pool across glomeruli, both are real inputs to the mushroom
 # body, so both are kept rather than hand-picking a "purer" subset.
 PN_CELL_CLASS = "ALPN"
 KC_CELL_CLASS = "Kenyon_Cell"
@@ -77,7 +77,7 @@ def load_cell_ids(
     """Return `(pn_root_ids, kc_root_ids)` for one hemisphere.
 
     The circuit runs largely independently per hemisphere, so this reads one
-    side at a time rather than pooling both -- pooling would let a PN and a
+    side at a time rather than pooling both, pooling would let a PN and a
     KC that never actually meet look connected only because the two
     unrelated per-hemisphere circuits got merged into one index space.
     """
@@ -99,7 +99,7 @@ def build_projection_matrix(
     `matrix[i, j]` is the total synapse count from PN `pn_ids[j]` onto KC
     `kc_ids[i]`, summed across neuropils (overwhelmingly the mushroom body
     calyx, where this synaptic contact actually happens). Pairs that never
-    connect are exactly zero -- the real circuit's sparsity is preserved,
+    connect are exactly zero, the real circuit's sparsity is preserved,
     never densified.
     """
     pn_ids, kc_ids = load_cell_ids(annotations_path, hemisphere)
@@ -153,7 +153,7 @@ def pool_to_width(matrix: sparse.csr_matrix, d_in: int) -> sparse.csr_matrix:
     so real PNs are grouped into `d_in` buckets by `pn_index % d_in`, and
     each Kenyon cell's weighted input from the PNs in a bucket is summed.
     Feature dimension `j` is therefore the pooled sum of whichever real PNs
-    landed in bucket `j` -- an honest lossy compression of the anatomical PN
+    landed in bucket `j`, an honest lossy compression of the anatomical PN
     population onto the tagger's feature width, not a claim that dimension
     `j` corresponds to one specific real neuron. Padding/tiling a short
     feature vector up to the real PN count was rejected as the alternative:

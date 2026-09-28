@@ -1,13 +1,13 @@
 """Wire the vibe tagger's output into the fly brain.
 
 Step 7 trained and evaluated the mushroom body against a placeholder
-embedding -- deterministic noise per `track_id`, standing in for a feature
+embedding, deterministic noise per `track_id`, standing in for a feature
 vector that didn't exist yet. This module builds the real one, from two
 files Phase 3 produces:
 
 - `data/track_features.parquet` (`selector.tagger.infer`): the fine-tuned
   student's **predicted** labels for every one of the 19,386 warehouse
-  tracks -- valence, intensity, era, mood_tags.
+  tracks, valence, intensity, era, mood_tags.
 - `data/audio_features.parquet` (`selector.audio.merge`): **measured** DSP
   features for the ~3,198 tracks a preview clip could be matched to.
 
@@ -15,11 +15,11 @@ Three feature sources are supported, all built by `build_feature_matrix`,
 so `notebooks/mbon_eval.py` can re-run Step 7's comparison across them
 side by side:
 
-- `"placeholder"` -- Step 7's original noise embedding, kept only as the
+- `"placeholder"`, Step 7's original noise embedding, kept only as the
   zero baseline for that comparison.
-- `"text_only"` -- the predicted labels alone (valence, intensity, era,
+- `"text_only"`, the predicted labels alone (valence, intensity, era,
   mood_tags), available for every track regardless of audio match.
-- `"full"` -- text features plus the measured audio features where a match
+- `"full"`, text features plus the measured audio features where a match
   exists, flagged with a `has_measured` bit. This is the production source:
   `build_and_persist_tags` (source="full") is what `data/fly_tags.npz` and
   the MCP tools below it are built from.
@@ -46,7 +46,7 @@ PLAYS_PATH = Path("data/plays.parquet")
 FLY_TAGS_PATH = Path("data/fly_tags.npz")
 
 # Same four scaled columns `selector.tagger.enrich` gives the teacher/student
-# as "measured" context -- reused here so the fly sees the same measured
+# as "measured" context, reused here so the fly sees the same measured
 # signal the tagger was scored against, not a different slice of the 94
 # DSP columns in `audio_features.parquet`.
 MEASURED_COLUMNS = ["tempo_scaled", "rms_mean_scaled", "danceability", "harmonic_percussive_ratio_scaled"]
@@ -78,7 +78,7 @@ def _predicted_vector(row: pd.Series) -> np.ndarray:
     """valence + intensity + one-hot era + multi-hot mood_tags, in that
     fixed column order. Every warehouse track has a row in
     `track_features.parquet` (arm A at worst), so this is always available
-    -- `lyrical_theme` is deliberately left out: it's free text with no
+   , `lyrical_theme` is deliberately left out: it's free text with no
     controlled vocabulary, so there's no honest fixed-width numeric encoding
     for it here.
     """
@@ -149,7 +149,7 @@ def build_feature_matrix(
 def fit_fly(track_ids: list[str], X: np.ndarray, seed: int = FLY_SEED) -> tuple[FlyHash, sparse.csr_matrix]:
     """Fit a `FlyHash` wired with the real FlyWire connectome (Step 6) over
     `X`, and return `(fly, tags)`. `fly.fit(X)` computes normalisation
-    statistics from the same data being tagged -- fine here since the fly
+    statistics from the same data being tagged, fine here since the fly
     brain is a fixed hash, not a model being evaluated for generalisation
     (that check happens downstream, in the MBON eval)."""
     d_in = X.shape[1]
@@ -209,7 +209,7 @@ def train_production_mbon(
     """Train a mushroom body on the *entire* chronological play history.
 
     This is deliberately not the train/test split `notebooks/mbon_eval.py`
-    uses -- that split exists to measure whether the plasticity rule
+    uses, that split exists to measure whether the plasticity rule
     generalises to unseen tracks honestly, by holding out 2025-2026. This
     function is for the MCP tools below, which want the best taste model
     available and have no reason to withhold real listening history from
@@ -231,7 +231,7 @@ def train_production_mbon(
 
 class _NKcHolder:
     """Minimal stand-in for a `FlyHash`, exposing only the `.n_kc` attribute
-    `MushroomBody.__init__` reads -- see `train_production_mbon`."""
+    `MushroomBody.__init__` reads, see `train_production_mbon`."""
 
     def __init__(self, n_kc: int) -> None:
         self.n_kc = n_kc

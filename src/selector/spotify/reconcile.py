@@ -21,7 +21,7 @@ import pandas as pd
 from selector.spotify.client import SpotifyClient
 from selector.warehouse.build import DEFAULT_DB_PATH
 
-# Tuned for "clearly a habit, not a one-off" — kept in one place so they're
+# Tuned for "clearly a habit, not a one-off", kept in one place so they're
 # easy to adjust without hunting through the query bodies.
 RECONCILE_THRESHOLDS = {
     "played_never_saved_min_plays": 10,

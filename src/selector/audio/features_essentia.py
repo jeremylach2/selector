@@ -6,7 +6,7 @@ audio-features endpoint, which is the whole point: danceability and the five
 mood dimensions below are the same kind of "how does this sound" summary
 Spotify used to compute server-side.
 
-Must run inside WSL2 (or Linux/macOS) — ``essentia-tensorflow`` ships no
+Must run inside WSL2 (or Linux/macOS), ``essentia-tensorflow`` ships no
 Windows wheels. See ``docs/WSL_SETUP.md`` for the exact setup, and
 ``scripts/run_essentia.sh`` to run this from Windows in one command. Reads
 ``data/audio/`` and the models in ``data/essentia_models/`` through
@@ -14,7 +14,7 @@ Windows wheels. See ``docs/WSL_SETUP.md`` for the exact setup, and
 already mounted there.
 
 Honesty constraint: every prediction here is made on a 30-second excerpt,
-not the full track — see the module docstring in ``features_librosa`` for
+not the full track, see the module docstring in ``features_librosa`` for
 the full statement of that limit.
 """
 

@@ -1,6 +1,6 @@
 """Stage 1, Brief: read the room and pick a theme.
 
-Inputs are recent plays plus the clock -- local hour, weekday vs weekend,
+Inputs are recent plays plus the clock, local hour, weekday vs weekend,
 and which artists and moods have dominated the last few dozen plays. Output
 is a `Brief`: the chosen `Theme`, the context that chose it, a handful of
 seed tracks from recent listening that fit it, and a one-paragraph
@@ -190,7 +190,7 @@ def resolve_theme(requested: str) -> Theme:
 def pick_seeds(theme: Theme, recent: pd.DataFrame, crate: Crate, n: int = N_SEEDS) -> list[str]:
     """Recent crate tracks that share a mood with the theme, most recent
     first. Topped up with the fly's highest-taste on-theme tracks if recent
-    listening doesn't supply enough -- seeds anchor coherence in Select."""
+    listening doesn't supply enough, seeds anchor coherence in Select."""
     tracks = crate.by_id()
     on_theme = tracks["mood_tags"].apply(lambda tags: bool(set(tags) & set(theme.mood_tags)))
 

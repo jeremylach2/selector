@@ -55,7 +55,7 @@ from selector.spotify.reconcile import reconcile_library as _reconcile_library
 from selector.warehouse import queries, wrapped
 
 # Loaded here, at import time, since Claude Desktop launches this process
-# directly and never sources a shell profile — SPOTIFY_CLIENT_ID etc. would
+# directly and never sources a shell profile, so SPOTIFY_CLIENT_ID etc. would
 # otherwise never reach os.environ.
 load_dotenv()
 
@@ -119,7 +119,7 @@ def spotify_create_playlist(
     """Create a new playlist in this person's Spotify account, optionally
     pre-filled with `track_uris` (values like "spotify:track:...", from
     `spotify_search` results or elsewhere). This performs a real, immediate
-    write to the user's account with no dry-run mode — only call it once the
+    write to the user's account with no dry-run mode, only call it once the
     user has clearly asked for a playlist to be created, not speculatively.
     """
 
@@ -205,7 +205,7 @@ def _load_fly_state() -> tuple[list[str], Any, dict[str, int]] | None:
 
 def _get_production_mbon(track_ids: list[str], tags) -> Any:
     """Trains once, on the full chronological play history (see
-    `selector.fly.pipeline.train_production_mbon`), and caches — this is a
+    `selector.fly.pipeline.train_production_mbon`), and caches. This is a
     single pass over `data/plays.parquet`, not per-call work."""
     global _fly_mbon
     if _fly_mbon is None:
@@ -252,11 +252,11 @@ def _resolve_track(track: str) -> tuple[str, str, str] | None:
 @server.tool()
 def more_like_this(track: str, k: int = 10) -> str:
     """Find tracks whose fly-brain fingerprint is nearest by Hamming
-    distance to `track`'s — the fly-brain equivalent of Spotify's dead
+    distance to `track`'s, the fly-brain equivalent of Spotify's dead
     "related tracks" endpoint. `track` accepts an exact `track_id` (from
     `search_library`) or a name substring, in which case the highest-play-count
     match is used. This is content/vibe similarity (shared Kenyon-cell
-    activity from the vibe tagger's features), not taste — use `fly_score`
+    activity from the vibe tagger's features), not taste. Use `fly_score`
     for whether this person is predicted to actually like a track.
 
     Many tracks share an identical fingerprint (mostly tracks with no

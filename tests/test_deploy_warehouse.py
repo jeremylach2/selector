@@ -1,4 +1,4 @@
-"""The deploy warehouse (Privacy Plan 3.3) and the deployed tool list (3.4).
+"""The deploy warehouse and the deployed tool list.
 
 The `warehouses` fixture (conftest.py) is built from a few invented plays
 rather than the real warehouse, so these run in CI too.
