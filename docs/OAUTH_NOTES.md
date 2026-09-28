@@ -114,14 +114,19 @@ empty orphaned playlist behind. `add_tracks_to_playlist` now posts to
 nests track count under `items.total` rather than a top-level `tracks` key,
 in case anything ever needs to read it back.
 
-**Known unresolved quirk:** setting `public=False` on create, or PUTting
-`{"public": false}` to `/playlists/{id}` afterward, does not appear to take
-effect — `GET /playlists/{id}` keeps reporting `"public": true` either way.
-This only affects whether the playlist is listed on the account's public
-profile page, not link access (an unlisted-but-unshared playlist is not
-discoverable regardless), so it's a cosmetic gap rather than a privacy leak,
-but it's real and unresolved — don't claim private playlist creation works
-until Spotify's behavior here is understood better.
+**Playlists can't be made truly private through the API.** The API's
+`public` flag is what the Spotify apps now call "Add to profile" /
+"Publish on profile": `public=False` keeps the playlist off your profile
+and out of search. The apps' Public/Private toggle is a newer, separate
+setting that controls who can open the playlist by link. The Web API doesn't
+expose it, so every playlist it creates shows as "Public" in the app. Spotify's
+reference says so: "the public attribute does not refer to access control,
+modifying access is currently not possible through the WebAPI". Checked
+2026-09-28: a playlist created by `dj_set` read back `"public": false` from
+`GET /playlists/{id}`, yet the app listed it as public. (An earlier note here
+said the flag never took effect; that was probably the same confusion.) The
+only fix is by hand: in the Spotify app, open the playlist's menu and choose
+"Make private".
 
 ## Things that cost time, for the next person
 

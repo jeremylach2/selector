@@ -154,8 +154,9 @@ This is a risk reading, not legal advice.
 The 30-second clips in `data/audio/` exist only to measure features. They
 are gitignored, blocked by the guard's audio-suffix rule, excluded from the
 Vercel upload, and never played on the site. Apple's and Deezer's preview
-terms are written for in-app playback, not bulk download, so the plan is to
-delete them. That waits until the deferred authenticity features
-(acoustic-vs-electronic, timing looseness) have been extracted, because
-that needs the clips. After that, the measured features in parquet are all
-the project needs.
+terms are written for in-app playback, not bulk download, which argues for
+deleting them. They're kept anyway, on purpose: they never leave this
+machine, and deleting them would rule out ever re-extracting features (for
+example the possible future authenticity features, acoustic-vs-electronic
+and timing looseness). Everything the project currently uses is already in
+the parquet feature files.

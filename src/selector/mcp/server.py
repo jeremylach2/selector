@@ -508,7 +508,10 @@ def dj_set(
     familiar_ratio: float = 0.6,
 ) -> str:
     """Plan a themed DJ set from this person's own library and, only if
-    `dry_run` is False, create it as a private Spotify playlist.
+    `dry_run` is False, create it as a Spotify playlist kept off the
+    profile. The Web API can't make a playlist private by link (see
+    `docs/OAUTH_NOTES.md`), so the app still shows it as Public until the
+    user picks "Make private" there.
 
     Runs five explicit stages: Brief (reads recent plays and the clock,
     picks a theme), Arc (an opener/build/peak/comedown energy curve over
