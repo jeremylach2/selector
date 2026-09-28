@@ -124,7 +124,7 @@ def benchmark_hash_lengths(
     """Compare FlyHash mAP against classical LSH mAP across several hash
     lengths on the same dataset `X` (n_samples, n_features).
 
-    `projection_matrix` lets Step 6 re-run this with the real FlyWire
+    `projection_matrix` lets the connectome validation re-run this with the real FlyWire
     connectome in place of the random PN->KC projection: pass a fixed matrix
     and every hash length reuses it (sliced to the first `hash_len` KCs is
     not meaningful for a fixed real matrix, so callers wanting a real

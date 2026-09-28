@@ -1,6 +1,6 @@
 # Lyrics source for the teacher labelling pipeline
 
-Step 10 needs lyrics as one input to the teacher (alongside metadata and
+Teacher labelling needs lyrics as one input to the teacher (alongside metadata and
 measured audio features). This needed a source whose terms actually permit
 the use, feeding the text into an LLM call, not republishing it, rather
 than the first API that returns text.
@@ -17,7 +17,7 @@ reason:
   gives metadata and a link to the Genius webpage, not the lyrics
   themselves. Getting the actual text off the webpage means scraping, which
   Genius's terms prohibit. That rules it out for this project's "no
-  ToS-violating pipeline" rule (the same rule Step 8 applied to ruling out
+  ToS-violating pipeline" rule (the same rule audio matching applied to ruling out
   YouTube).
 - **lrclib.net's API is public, keyless, and returns full lyrics text
   directly** (`plainLyrics` and, where available, line-synced

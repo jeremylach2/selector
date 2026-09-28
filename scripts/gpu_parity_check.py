@@ -1,4 +1,4 @@
-"""Step 11's GPU parity check: re-score the 487-track held-out test split
+"""GPU parity check: re-score the 487-track held-out test split
 through llama.cpp's Vulkan `llama-server` and confirm the metrics match the
 CPU rows already in docs/EVAL.md (identical or within noise), before
 trusting the GPU path for infer.py's full 19,386-track run.

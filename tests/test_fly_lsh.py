@@ -98,7 +98,7 @@ def test_projection_matrix_setter_validates_shape():
 
 
 def test_projection_matrix_setter_is_the_flywire_seam():
-    """Step 6 swaps this property; downstream transform() must honour it."""
+    """The connectome module swaps this property; downstream transform() must honour it."""
     X = _toy_data(n=5, d=4, seed=11)
     fly = FlyHash(d_in=4, n_kc=20, seed=0)
     fly.fit(X)

@@ -1,6 +1,6 @@
 # FlyWire connectome: data source, version, and honest limits
 
-Step 6 of the fly brain replaces `selector.fly.lsh.FlyHash`'s random
+The connectome step of the fly brain replaces `selector.fly.lsh.FlyHash`'s random
 projection-neuron -> Kenyon-cell (PN->KC) wiring with the real connectivity
 measured in an actual fly brain. This document records exactly which data
 that is, where it came from, and where the real circuit differs from the
@@ -20,7 +20,7 @@ not tell us synaptic weights in a functional sense, and most of what would
 determine learned behaviour (synaptic strength changes over an animal's
 lifetime) is not part of this dataset. Nothing in this project claims the fly
 brain was trained to do anything. The mushroom body's actual learning rule is
-implemented separately in Step 7 (`selector.fly.mbon`), trained on this
+implemented separately in `selector.fly.mbon`, trained on this
 listening history, not on FlyWire.
 
 ## Data source
@@ -115,7 +115,7 @@ PNs) instead of inventing a dense random mixing on top of it.
 
 ## Does the real wiring actually help retrieval?
 
-`notebooks/fly_connectome_validation.py` re-runs Step 5's benchmark with a
+`notebooks/fly_connectome_validation.py` re-runs the fly-vs-LSH benchmark with a
 third line: classical random-projection LSH, idealised FlyHash (random
 PN->KC wiring), and FlyWire FlyHash (the real wiring above), all at matched
 hash lengths on the same pooled-MNIST input.
@@ -124,7 +124,7 @@ hash lengths on the same pooled-MNIST input.
 
 At 4 bits, real and idealised are statistically tied and both clearly beat classical LSH. From 8 bits onward, real FlyHash falls increasingly behind idealised FlyHash, and by 64 bits it also falls behind classical LSH (.23 vs. .33). It underperforms the plain-random baseline outright. Idealised FlyHash converges with classical LSH at 64 bits. Real FlyHash does not follow that trend and instead plateaus well below both.
 
-Conclusion: the real connectome's wiring, once adapted to the tagger's feature width via pool_to_width, does not just fail to improve on a matched-statistics random circuit, it measurably underperforms one, and the gap widens with hash length. This is a stronger and more specific claim than "no difference," and it should be treated as a live hypothesis to check against on real vibe-tagger features in Step 12, not assumed to be an MNIST-specific artifact.
+Conclusion: the real connectome's wiring, once adapted to the tagger's feature width via pool_to_width, does not just fail to improve on a matched-statistics random circuit, it measurably underperforms one, and the gap widens with hash length. This is a stronger and more specific claim than "no difference," and it should be treated as a live hypothesis to check against on real vibe-tagger features, not assumed to be an MNIST-specific artifact.
 
 Why would idealised beat real at all?
 

@@ -1,8 +1,8 @@
-"""Three-way reproduction of Step 5's benchmark, with the real FlyWire
+"""Three-way reproduction of the fly-vs-LSH benchmark, with the real FlyWire
 connectome added as a third line: random LSH vs. idealised FlyHash (random
 PN->KC projection) vs. FlyWire FlyHash (the real, measured PN->KC wiring).
 
-This answers the question Step 6 exists to answer: does the *real* circuit
+This answers the question the connectome wiring exists to answer: does the *real* circuit
 retrieve nearest neighbours any better or worse than an equally-sized random
 one? Report it straight either way.
 

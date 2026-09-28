@@ -169,7 +169,7 @@ at this model size, the labels have to be taught.
 Labels: `data/labels.jsonl`: 3,492 tracks labelled by the teacher,
 `claude-sonnet-5` (top 3,000 by play count plus a 500-track stratified
 sample from the 1–2-play tail, 8 schema-validation failures dropped). 91.4% of them have measured audio
-features. See `docs/DATA_FIX_PLAN.md` for how this set was rebuilt and why.
+features. The set was rebuilt after the first round of fine-tunes ran on only 198 tracks with audio (see "Before the data fix" below).
 
 The supplemental tail sample. The top 3,000 tracks by play count are
 effectively "played 3+ times", which leaves out the 80% of the library
@@ -275,8 +275,10 @@ tracks (6.6%) had any measured audio, because audio matching had only been
 run for a 200-track pilot. 93% of arm B's training prompts said
 `Measured audio features: none available`, so that round couldn't answer the
 audio question at all. It never got a task-level eval. Its eval_loss values
-aren't comparable to the table above (different label set and split). The
-data fix and its reasoning are in `docs/DATA_FIX_PLAN.md`.
+aren't comparable to the table above (different label set and split). The fix
+was to scale audio matching and feature extraction to the full top 3,000
+tracks, add the supplemental tail sample, relabel from scratch and retrain all
+three arms.
 
 ## GPU inference, latency, and cost
 
@@ -315,7 +317,7 @@ fuller version of this argument.
 Parity check: Before trusting the GPU path, the same 487-track test
 split was re-scored through both arm servers and compared against the CPU
 rows above. Every metric landed within noise (≤0.001 MAE, ≤0.8 percentage
-points on match rates) - full table in `docs/GPU_INFERENCE.md`.
+points on match rates). The full table is in `docs/GPU_INFERENCE.md`.
 
 ## Llama-3.2-1B: dropped
 
@@ -348,7 +350,7 @@ the warehouse, replacing the earlier dry-run baseline.
 The parse-fallback rate (1.9% for arm A, 0.4% for arm C) is in the same
 range as the CPU/GPU eval rows above, as expected since it's the same
 models generating. Every row carries `arm` and `label_source`, so a
-downstream consumer (Step 12's fly brain, the DJ agent) can tell a
+downstream consumer (the fly brain, the DJ agent) can tell a
 fine-tuned prediction from a fallback rather than treating them the same.
 
 **Update: audio expansion.** The rows above originally reflected the

@@ -9,7 +9,7 @@ does, and runs `Trainer.evaluate()` against it. Read-only with respect to
 the checkpoints themselves: only writes new
 data/runs/A/eval_loss_backfill_epoch{1,2}.json files.
 
-CPU-only, ~15-20 min per checkpoint. See docs/DATA_FIX_PLAN.md Step 0.
+CPU-only, ~15-20 min per checkpoint.
 """
 
 from __future__ import annotations

@@ -1,6 +1,6 @@
 # Installing the Selector MCP server
 
-Selector exposes the local taste warehouse (built in Phase 0) as an MCP
+Selector exposes the local taste warehouse (built by `selector.warehouse.build`) as an MCP
 server over stdio. **Verified working in Claude Code**. Claude Desktop is
 currently a known issue, see the section below before spending time on it.
 
@@ -84,7 +84,7 @@ failing, the warehouse tools below work either way.
 
 ## What's exposed
 
-**Warehouse tools** (read `data/selector.duckdb`, built in Phase 0), one per
+**Warehouse tools** (read `data/selector.duckdb`, built by `selector.warehouse.build`), one per
 query plus `warehouse_summary` as an orientation call: `warehouse_summary`,
 `search_library`, `track_detail`, `top_artists`, `binged_then_abandoned`,
 `skip_offenders`, `listening_clock`, `taste_drift`, `rediscovery_candidates`.
@@ -102,7 +102,7 @@ through the login. In Claude Code, `claude mcp add --transport http
 selector-remote https://selector-mcp.vercel.app/mcp`, then `/mcp` to log
 in.
 
-**Fly brain tools** (read `data/fly_tags.npz`, built by Step 12's
+**Fly brain tools** (read `data/fly_tags.npz`, built by
 `uv run python -m selector.fly.pipeline`): `more_like_this(track, k)`,
 nearest tracks by Hamming distance over fly-brain fingerprints, i.e. content
 similarity, and `fly_score(track)`, the mushroom body's predicted

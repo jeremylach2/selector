@@ -8,7 +8,7 @@ track would play, and Critique rejects a set whose realised curve leaves
 the band.
 
 Energy here is `selector.dj.pool.measured_energy`, DSP loudness, onset
-density and spectral brightness from the Step 9 audio features, rank-
+density and spectral brightness from the measured audio features, rank-
 normalised over the crate. Predicted labels never enter the arc.
 
 The same module owns the transition rules (how far tempo and energy may

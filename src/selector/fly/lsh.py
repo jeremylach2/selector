@@ -9,7 +9,7 @@ winner-take-all so only the top few percent of KCs fire. Similar inputs land
 on similar sparse binary tags, which is a locality-sensitive hash.
 
 This module implements the *idealised* circuit with a random PN->KC
-projection. Step 6 (`selector.fly.connectome`) swaps that random projection
+projection. `selector.fly.connectome` swaps that random projection
 for the real FlyWire connectome via the `projection_matrix` property, which is
 the seam this module exists to provide.
 """
@@ -164,7 +164,7 @@ class FlyHash:
 
     @projection_matrix.setter
     def projection_matrix(self, matrix) -> None:
-        """Replace the random projection, the seam Step 6 plugs the real
+        """Replace the random projection, the seam `selector.fly.connectome` plugs the real
         FlyWire connectome into. `matrix` must be (n_kc, d_in) shaped and is
         stored as a sparse CSR matrix regardless of the input format.
         """

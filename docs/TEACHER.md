@@ -1,8 +1,8 @@
 # Teacher labelling
 
-Step 10 produces the subjective half of the vibe tagger's schema (valence,
+Teacher labelling produces the subjective half of the vibe tagger's schema (valence,
 mood tags, era, lyrical theme, intensity) for the label set used to
-fine-tune the student model in Step 11. `selector/tagger/label.py` calls
+fine-tune the student model. `selector/tagger/label.py` calls
 the teacher through the Anthropic API with strict tool use against the
 `PredictedLabels` schema, and requires `ANTHROPIC_API_KEY` (plus
 `ANTHROPIC_WORKSPACE_ID` if the key isn't workspace-scoped) in `.env`.
@@ -15,7 +15,7 @@ in `data/labels.jsonl` has `teacher_model: "claude-sonnet-5"` and
 
 **Scope:** 3,500 tracks: the top 3,000 by play count plus a 500-track
 stratified sample from the tail of tracks played only once or twice (250
-always skipped, 250 never skipped). See `docs/DATA_FIX_PLAN.md` Step 4 and
+always skipped, 250 never skipped). See
 `docs/EVAL.md` ("The supplemental tail sample") for why and what it
 changed. Built by `scripts/label_full_with_supplemental.py`, because
 `label.py`'s CLI only takes `--limit N`.

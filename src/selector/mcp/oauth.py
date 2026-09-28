@@ -1,7 +1,6 @@
 """MCP OAuth for the hosted server, with Spotify as the login.
 
-Replaces the static `SELECTOR_MCP_TOKEN` bearer (Phase 2 of
-`docs/REMOTE_SPOTIFY_PLAN.md`). The server is its own OAuth authorization
+Replaces the static `SELECTOR_MCP_TOKEN` bearer. The server is its own OAuth authorization
 server, built on the SDK's `mcp.server.auth` handlers, and this module is
 the provider behind them:
 

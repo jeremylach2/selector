@@ -165,7 +165,7 @@ def reconcile_library() -> str:
 # -- fly brain tools ------------------------------------------------------
 #
 # Both tools below read `data/fly_tags.npz`, the fingerprints
-# `selector.fly.pipeline` (Step 12) computes over the fine-tuned vibe
+# `selector.fly.pipeline` computes over the fine-tuned vibe
 # tagger's output plus measured audio features, wired through the real
 # FlyWire connectome. Loaded and cached lazily on first use, since fitting
 # nothing here is free but training the production mushroom body does a
@@ -181,11 +181,11 @@ _fly_plays = None
 
 def _missing_fly_tags_message(path: Path) -> str:
     return (
-        f"No fly-brain fingerprints found at `{path}`. Run the Step 12 pipeline first:\n\n"
+        f"No fly-brain fingerprints found at `{path}`. Run the fly pipeline first:\n\n"
         "```\n"
         "uv run python -m selector.fly.pipeline\n"
         "```\n\n"
-        "(needs `data/track_features.parquet` from Step 11 first) then retry this call."
+        "(needs `data/track_features.parquet` from the tagger first) then retry this call."
     )
 
 

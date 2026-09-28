@@ -1,4 +1,4 @@
-# Personal data — never committed
+# Personal data, never committed
 my_spotify_data.zip
 data/raw/
 *.duckdb
@@ -61,9 +61,10 @@ Selector - Project Extension Plan.md
 Selector - Privacy Plan.md
 docs/futureIdeas.txt
 
-SKILL.md
+# Vercel link state and local env files (.env.example stays tracked)
 .vercel
 .env*
+!.env.example
 
 # Early concept mockup, referenced only by the internal plan
 image.png

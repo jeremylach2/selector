@@ -1,9 +1,9 @@
 """Wire the vibe tagger's output into the fly brain.
 
-Step 7 trained and evaluated the mushroom body against a placeholder
+The mushroom body was first trained and evaluated against a placeholder
 embedding, deterministic noise per `track_id`, standing in for a feature
 vector that didn't exist yet. This module builds the real one, from two
-files Phase 3 produces:
+files the vibe tagger produces:
 
 - `data/track_features.parquet` (`selector.tagger.infer`): the fine-tuned
   student's **predicted** labels for every one of the 19,386 warehouse
@@ -12,10 +12,10 @@ files Phase 3 produces:
   features for the ~3,198 tracks a preview clip could be matched to.
 
 Three feature sources are supported, all built by `build_feature_matrix`,
-so `notebooks/mbon_eval.py` can re-run Step 7's comparison across them
+so `notebooks/mbon_eval.py` can re-run the placeholder comparison across them
 side by side:
 
-- `"placeholder"`, Step 7's original noise embedding, kept only as the
+- `"placeholder"`, the original noise embedding, kept only as the
   zero baseline for that comparison.
 - `"text_only"`, the predicted labels alone (valence, intensity, era,
   mood_tags), available for every track regardless of audio match.
@@ -65,8 +65,8 @@ MBON_DECAY = 0.01
 
 
 def placeholder_embedding(track_id: str, d_in: int) -> np.ndarray:
-    """Step 7's noise embedding: deterministic pseudo-random per `track_id`,
-    carrying no real similarity signal. Kept only so the Step 12 comparison
+    """The original noise embedding: deterministic pseudo-random per `track_id`,
+    carrying no real similarity signal. Kept only so the feature-source comparison
     has the original zero baseline to compare against, not as a feature
     source anything should actually be built on.
     """
@@ -147,7 +147,7 @@ def build_feature_matrix(
 
 
 def fit_fly(track_ids: list[str], X: np.ndarray, seed: int = FLY_SEED) -> tuple[FlyHash, sparse.csr_matrix]:
-    """Fit a `FlyHash` wired with the real FlyWire connectome (Step 6) over
+    """Fit a `FlyHash` wired with the real FlyWire connectome over
     `X`, and return `(fly, tags)`. `fly.fit(X)` computes normalisation
     statistics from the same data being tagged, fine here since the fly
     brain is a fixed hash, not a model being evaluated for generalisation

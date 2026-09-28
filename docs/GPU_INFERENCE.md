@@ -1,9 +1,9 @@
 # GPU inference for the vibe tagger
 
-Step 11's fine-tune and eval table (`docs/EVAL.md`) ran entirely on CPU.
+The fine-tune and eval table (`docs/EVAL.md`) ran entirely on CPU.
 `infer.py` has to tag all 19,386 warehouse tracks, and at the CPU eval run's
 measured rate that's on the order of a day of wall time (see "CPU vs GPU
-latency" below for the actual numbers) - too slow to be a real step in this
+latency" below for the actual numbers), too slow to be a real step in this
 project. This doc records the GPU path that replaces it: what didn't work,
 what did, and the parity check that justified trusting it.
 
@@ -29,7 +29,7 @@ routes were tried and abandoned before landing on llama.cpp:
 llama.cpp's Vulkan backend runs on essentially any GPU with a working
 Vulkan driver, RDNA1 included, and needs no ROCm or CUDA. It's inference
 only, no training path, which is fine, since only `infer.py`'s generation
-step needs to move off CPU. Training (Step 11's LoRA fine-tune) already
+step needs to move off CPU. Training (the LoRA fine-tune) already
 finished on CPU.
 
 **No compiler installed on this machine (no cmake, no MSVC/Visual Studio
@@ -43,7 +43,7 @@ gh release download b11149 --repo ggml-org/llama.cpp `
 Expand-Archive tools/llama-b11149-bin-win-vulkan-x64.zip tools/llama-vulkan
 
 # one-time: the GGUF conversion script + its gguf-py package aren't in the
-# binary release (they're plain Python, not compiled) - sparse-clone just
+# binary release (they're plain Python, not compiled), so sparse-clone just
 # those from the source repo
 git clone --depth 1 --filter=blob:none --no-checkout `
   https://github.com/ggml-org/llama.cpp.git tools/llama.cpp-src
@@ -175,7 +175,7 @@ under 2 hours, see `docs/EVAL.md` for the actual run's wall time once
 API) at $5.03 per thousand tracks. The fine-tuned student's inference has
 no equivalent per-call cost at all: it runs locally against hardware
 already owned, with no metered API in the loop. The honest comparison
-isn't "$X versus $5.03" - it's that the $5.03/1k figure was a one-time cost
+isn't "$X versus $5.03". It's that the $5.03/1k figure was a one-time cost
 to produce ~3,500 labelled examples to train on, and everything inferred
 after that (the other ~15,900 tracks, and any future track) is free at the
 margin. That's the actual economic argument for distillation here: the

@@ -1,6 +1,6 @@
 """Tag every track in the warehouse with the winning fine-tuned
-configuration from Step 11's eval table, producing
-`data/track_features.parquet`, the file Step 12 consumes.
+configuration from the eval table, producing
+`data/track_features.parquet`, the file the fly pipeline consumes.
 
 Arm C (lyrics + measured audio + metadata) for the ~3,198 tracks with a
 matched audio preview, arm A (lyrics + metadata) for the rest, since arm C
@@ -32,7 +32,7 @@ lyrics. `--status-only` rewrites the parquet with a fresh `lyrics_status`
 column and no generation.
 
 `--dry-run` predicts using the trivial train-mean baseline instead of
-calling a model, so the output schema and the Step 12 handoff can be
+calling a model, so the output schema and the fly pipeline handoff can be
 exercised end to end without a GPU server running, every row in that mode
 is flagged `label_source="dry_run_baseline"`, never something a downstream
 consumer could mistake for a real prediction.

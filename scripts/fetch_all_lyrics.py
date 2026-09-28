@@ -1,5 +1,5 @@
 """Fetch lyrics for every track in the warehouse (not just the ~3,500
-labelled tracks), so infer.py's full run (Step 11 item 6) has lyrics
+labelled tracks), so infer.py's full run has lyrics
 available for arm A/C predictions on the long tail.
 
 `enrich.fetch_lyrics` already caches to `data/lyrics/{track_id}.txt` and

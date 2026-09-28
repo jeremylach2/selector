@@ -1,5 +1,5 @@
 """Gather per-track input for the teacher labelling pipeline: metadata,
-lyrics, and (where a preview clip was matched and Step 9 has run) measured
+lyrics, and (where a preview clip was matched and audio features have been extracted) measured
 audio features.
 
 Lyrics come from lrclib.net rather than the more
@@ -140,7 +140,7 @@ def enrich_tracks(
     audio_features_path: Path = Path("data/audio_features.parquet"),
 ) -> list[TeacherInput]:
     """Build one TeacherInput per track: warehouse metadata, cached lyrics,
-    and measured audio features joined in where Step 9 has produced them."""
+    and measured audio features joined in where audio extraction has produced them."""
     tracks = _load_tracks(track_ids, limit, db_path)
     measured_by_track = _measured_features_by_track(
         audio_features_path, ["tempo_scaled", "rms_mean_scaled", "danceability", "harmonic_percussive_ratio_scaled"]

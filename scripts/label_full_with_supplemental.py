@@ -1,11 +1,11 @@
 """Regenerate data/labels.jsonl for the full data-fix scope: the top-3,000
 tracks by play count plus the 500-track supplemental tail sample from
-Step 4 (250 skipped-once + 250 completed-once, both play_count <= 2).
+supplemental tail sample (250 skipped-once + 250 completed-once, both play_count <= 2).
 
 label.py's CLI only supports a plain --limit N (top-N-by-play-count) query,
 not an explicit id list, so this script builds the combined id list
 directly and calls enrich_tracks/run_labelling the way label.py's main()
-does internally. See docs/DATA_FIX_PLAN.md Step 5.
+does internally.
 
 Checkpointed by run_labelling itself (flushes after every record, skips
 track_ids already in the output file) - safe to rerun after an interruption.

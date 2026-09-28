@@ -1,7 +1,7 @@
 # WSL2 setup for the Essentia feature extraction half
 
 `essentia-tensorflow` ships no Windows wheels, only Linux and macOS, so this
-half of Step 9's DSP feature stack runs inside WSL2. The librosa half runs
+half of the DSP feature stack runs inside WSL2. The librosa half runs
 natively on Windows. See `selector/audio/features_librosa.py`.
 
 ## Versions that worked here

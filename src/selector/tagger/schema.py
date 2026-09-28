@@ -2,11 +2,11 @@
 was obtained.
 
 This split is the project's central design claim: **measured** features are
-read straight from `data/audio_features.parquet` (Step 9's DSP output) and
+read straight from `data/audio_features.parquet` (the DSP output) and
 are never predicted by any model. **Predicted** features are teacher-labelled
-from lyrics and metadata (Step 10), because there is no measured ground
+from lyrics and metadata, because there is no measured ground
 truth for things like valence or lyrical theme in a 30-second instrumental
-clip. Step 11's eval table exists specifically to show how well the
+clip. The eval table exists specifically to show how well the
 predicted half tracks the measured half where they overlap, and to give an
 honest ceiling (teacher self-consistency) instead of a synthetic one.
 """

@@ -2,15 +2,15 @@
 five stages need attached to one row.
 
 A track is only in the crate if it has **measured** audio features
-(`data/audio_features.parquet`, Step 9), about 3,200 of the 19,386
+(`data/audio_features.parquet`), about 3,200 of the 19,386
 warehouse tracks. That restriction is deliberate: the energy arc is a hard
 constraint, and a hard constraint checked against a model's *guess* at
 energy would be a constraint on nothing. Everything else on the row mixes
 three provenances, and the column names keep them apart:
 
 - measured (DSP on a 30-second preview): `tempo`, `energy`
-- predicted (fine-tuned tagger, Step 11): `mood_tags`, `pred_valence`
-- learned (fly brain, Step 12): `tag_row` into the fly tag matrix,
+- predicted (fine-tuned tagger): `mood_tags`, `pred_valence`
+- learned (fly brain): `tag_row` into the fly tag matrix,
   `fly_valence` from the production mushroom body
 - observed (the warehouse): play counts, recency, durations
 """

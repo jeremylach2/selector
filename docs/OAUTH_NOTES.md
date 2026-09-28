@@ -42,7 +42,7 @@ Covers `saved_tracks`, `top_artists`/`top_tracks`, `create_playlist`, and
 even though playlists are created private by default (`public=False`),
 see the migration note below for why it turned out not to matter, but it's
 harmless to request and removes one variable when debugging. No
-playback-control scopes, since nothing in Phase 1 controls playback.
+playback-control scopes, since nothing here controls playback.
 
 The hosted MCP server has its own, separate grant with narrower scopes
 (`REMOTE_SCOPES` in `auth.py`):

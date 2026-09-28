@@ -1,7 +1,7 @@
 # Audio matching, full-library results (all 19,386 tracks)
 
 Spotify removed 30-second preview URLs for new apps in November 2024, so
-Step 8's pipeline (`selector/audio/resolve.py` + `selector/audio/fetch.py`)
+The pipeline (`selector/audio/resolve.py` + `selector/audio/fetch.py`)
 resolves tracks against two public, keyless catalog APIs instead: the
 **iTunes Search API** (tried first) and the **Deezer public catalog API**
 (fallback). Neither is scraped, and no auth token is needed for search.
@@ -60,8 +60,7 @@ new teacher labels were needed for inference-only tagging.
 
 A 200-track pilot (see "Pilot results" below) validated matching quality
 and the download pipeline first. This section documents the full
-top-3,000-by-play-count run (`--limit 3000`, the default), done per
-`docs/DATA_FIX_PLAN.md` Step 2. It is superseded in scope by the full-library
+top-3,000-by-play-count run (`--limit 3000`, the default). It is superseded in scope by the full-library
 run above, but kept as the original validation record.
 
 ## Headline number
@@ -91,7 +90,7 @@ not just the mainstream top slice the pilot sampled.
 
 ## Supplemental tail sample (500 tracks)
 
-`docs/DATA_FIX_PLAN.md` Step 4 added 500 tracks from outside the top 3,000,
+A supplemental sample added 500 tracks from outside the top 3,000,
 all with `play_count <= 2`: 250 skipped every time and 250 never skipped
 (see `docs/EVAL.md`, "The supplemental tail sample"). They were resolved
 with `resolve.py --track-ids-file data/supplemental_track_ids.txt`.
@@ -261,7 +260,7 @@ might be slightly too permissive for short, generic titles. The full run's
 '505' → 'BassTon - 505 (TECHNO)' match confirms that risk materialized at
 scale.
 
-## Feature sanity check (Step 9)
+## Feature sanity check
 
 Run 2026-09-23 against `data/audio_features.parquet` (3,198 tracks), to
 confirm the extracted features mean what they claim.

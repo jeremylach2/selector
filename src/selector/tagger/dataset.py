@@ -1,5 +1,5 @@
 """Build train/val/test splits and prompt/completion pairs from
-`data/labels.jsonl` for Step 11's LoRA fine-tune.
+`data/labels.jsonl` for the LoRA fine-tune.
 
 Splits **by artist, not by track**: every track by a given artist lands in
 exactly one split. Splitting by track would let the model see, say, three
@@ -22,7 +22,7 @@ from selector.tagger.schema import LabelRecord, TeacherInput
 Arm = Literal["A", "B", "C"]
 
 # A: metadata + lyrics only. B: metadata + measured audio features only.
-# C: all three. Step 11's eval table runs the same student against all
+# C: all three. The eval table runs the same student against all
 # three to show what each input actually contributes.
 ARMS: tuple[Arm, ...] = ("A", "B", "C")
 

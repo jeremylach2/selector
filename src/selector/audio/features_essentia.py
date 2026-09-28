@@ -1,7 +1,7 @@
 """Extract audio features from preview clips using Essentia's pretrained
 TensorFlow classifiers, inside WSL2.
 
-This half of Step 9 maps almost one-to-one onto Spotify's removed
+This half of the audio feature stack maps almost one-to-one onto Spotify's removed
 audio-features endpoint, which is the whole point: danceability and the five
 mood dimensions below are the same kind of "how does this sound" summary
 Spotify used to compute server-side.

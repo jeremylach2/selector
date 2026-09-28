@@ -50,7 +50,7 @@ from selector.warehouse.build import (
 # artist_sprint value is a dense month x artist matrix for a chart race, and
 # time_of_day carries all 24 hourly counts in the report's time zone.
 # 2.1: a top-level `audience` ("synthetic" or "private"), and the index
-# carries a `privacy` note. Mirrored in web/lib/wrapped.ts.
+# carries a `privacy` note. Mirrored in web/lib/rewind.ts.
 SCHEMA_VERSION = "2.1"
 
 WINDOW_DB_DIR = Path("data/wrapped_windows")
