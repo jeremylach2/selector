@@ -82,10 +82,18 @@ def test_every_import_is_in_requirements():
     assert not missing, f"api/index.py can import {sorted(missing)}, which requirements.txt doesn't install"
 
 
-def test_the_deployment_never_reaches_heavy_or_spotify_code():
+def test_the_deployment_never_reaches_heavy_or_local_only_code():
     reached, _ = _walk()
     assert "selector.mcp.http_server" in reached
-    for forbidden in ("selector.mcp.server", "selector.fly", "selector.spotify", "selector.dj", "selector.tagger"):
+    assert "selector.spotify.remote_store" in reached
+    local_only = (
+        "selector.mcp.server",
+        "selector.fly",
+        "selector.spotify.reconcile",
+        "selector.dj",
+        "selector.tagger",
+    )
+    for forbidden in local_only:
         assert not [m for m in reached if m == forbidden or m.startswith(forbidden + ".")], forbidden
 
 
@@ -95,7 +103,7 @@ def test_importing_the_entrypoint_loads_nothing_heavy(tmp_path):
     code = (
         "import runpy, sys; runpy.run_path(sys.argv[1]); "
         "bad = sorted(m for m in sys.modules if m.split('.')[0] in "
-        "{'scipy', 'torch', 'sklearn', 'librosa'} or m.startswith(('selector.fly', 'selector.spotify'))); "
+        "{'scipy', 'torch', 'sklearn', 'librosa'} or m.startswith(('selector.fly', 'selector.spotify.reconcile'))); "
         "print(bad); sys.exit(1 if bad else 0)"
     )
     env_db = str(tmp_path / "none.duckdb")

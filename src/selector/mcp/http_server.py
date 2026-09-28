@@ -1,18 +1,20 @@
 """ASGI entrypoint for running the Selector MCP server over Streamable HTTP.
 
 `server.py` defines every tool and stays stdio-only for local Claude Code /
-Desktop use per `docs/INSTALL_MCP.md`. This module registers only the
-read-only warehouse tools (`warehouse_tools.WAREHOUSE_TOOLS`, the same
-functions `server.py` registers, so definitions never drift between the
-two transports) on its own `deploy_server`, and exposes it as a plain ASGI
-`app`, suitable for a Vercel Python function or any other ASGI host. See
-`docs/DEPLOY_MCP.md`.
+Desktop use per `docs/INSTALL_MCP.md`. This module registers the read-only
+warehouse tools (`warehouse_tools.WAREHOUSE_TOOLS`) and the remote Spotify
+tools (`spotify_tools.REMOTE_SPOTIFY_TOOLS`: five reads plus a guarded
+`spotify_create_playlist`) on its own `deploy_server`, and exposes it as a
+plain ASGI `app`, suitable for a Vercel Python function or any other ASGI
+host. Both lists come from modules `server.py` also uses, so definitions
+never drift between the two transports. See `docs/DEPLOY_MCP.md`.
 
-It deliberately never imports `server.py`, which pulls in scipy and the
-Spotify client. The live Spotify tools need a local OAuth flow and could
-write to the account, the fly-brain and DJ tools need files the
-deployment doesn't ship (and the mushroom body trains on per-play
-history), and `wrapped_report` writes to disk.
+It deliberately never imports `server.py`, which pulls in scipy. The
+fly-brain and DJ tools need files the deployment doesn't ship (and the
+mushroom body trains on per-play history), `reconcile_library` needs the
+full warehouse, and `wrapped_report` writes to disk. The Spotify tools
+read their token from Redis rather than running a browser login (see
+`selector.spotify.remote_store`).
 
 Two deliberate choices, both driven by this being a single-user deployment:
 
@@ -35,13 +37,15 @@ from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from selector.mcp.spotify_tools import REMOTE_SPOTIFY_TOOLS, add_spotify_tools
 from selector.mcp.warehouse_tools import INSTRUCTIONS, WAREHOUSE_TOOLS
 
-DEPLOY_TOOLS = WAREHOUSE_TOOLS
+DEPLOY_TOOLS = (*WAREHOUSE_TOOLS, *REMOTE_SPOTIFY_TOOLS)
 
 deploy_server = MCPServer(name="selector", instructions=INSTRUCTIONS)
-for _tool in DEPLOY_TOOLS:
+for _tool in WAREHOUSE_TOOLS:
     deploy_server.add_tool(_tool)
+add_spotify_tools(deploy_server, REMOTE_SPOTIFY_TOOLS)
 
 TOKEN_ENV_VAR = "SELECTOR_MCP_TOKEN"
 # Local `uvicorn` testing only. Never set on Vercel: without it, a missing

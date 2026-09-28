@@ -80,8 +80,15 @@ explicit `SELECTOR_MCP_ALLOW_NO_AUTH=1`, which is never set on Vercel.
   Plays are reduced to counts per UTC day, hour and track. There are no
   exact timestamps, sessions, platforms, countries or reason codes, and the
   build refuses to write a file with any time column left.
-- **Tools:** only the nine read-only warehouse tools. The live Spotify,
-  fly-brain, DJ and Rewind tools are local-only.
+- **Tools:** the nine read-only warehouse tools and the live Spotify tools
+  (search, saved tracks, top items, recently played, and a guarded
+  playlist creation). Spotify results are passed through to the caller and
+  never stored. The fly-brain, DJ, Rewind and `reconcile_library` tools
+  are local-only.
+- **Spotify login:** its own grant with narrower scopes, kept in Upstash
+  Redis encrypted under `SELECTOR_TOKEN_KEY`. Redis also holds the daily
+  playlist counter and a log of playlists created (time, id, name, track
+  count), never tracks or listening data.
 - **Where it lives:** in a private Blob store connected only to the MCP
   project, downloaded into `/tmp` on cold start. It's never in git or a
   deployment. `.vercelignore` is an allowlist (`api/`, `src/`,
@@ -91,8 +98,9 @@ explicit `SELECTOR_MCP_ALLOW_NO_AUTH=1`, which is never set on Vercel.
 - **Token rotation:** `scripts/rotate_mcp_token.py` sets the new value
   without ever printing it.
 
-The hour buckets still show roughly what was played when. The token is the
-only thing keeping that private. See [DEPLOY_MCP.md](DEPLOY_MCP.md).
+The hour buckets still show roughly what was played when, and the token can
+also create playlists on the account (at most 20 a day). The token is the
+only thing keeping both private. See [DEPLOY_MCP.md](DEPLOY_MCP.md).
 
 ## Guardrails
 
@@ -142,11 +150,11 @@ graph of `selector.tagger`, `selector.fly`, `selector.audio` and
 `selector.ingest`, including imports made inside functions, and fails if
 any of them can reach `selector.spotify`.
 
-**Inference is the gray area.** The local-only `spotify_*` MCP tools hand
-live Web API results to Claude in a conversation. The DJ agent may read the
+**Inference is the gray area.** The `spotify_*` MCP tools, local and
+hosted, hand live Web API results to Claude in a conversation. The hosted
+server passes them through without storing them. The DJ agent may read the
 live recently-played list to pick a theme, which is deterministic scoring,
-not a model, and nothing it reads is stored as training data. None of this
-runs on the hosted MCP server.
+not a model, and nothing it reads is stored as training data.
 
 This is a risk reading, not legal advice.
 

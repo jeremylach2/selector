@@ -37,6 +37,19 @@ see the migration note below for why it turned out not to matter, but it's
 harmless to request and removes one variable when debugging. No
 playback-control scopes, since nothing in Phase 1 controls playback.
 
+The hosted MCP server has its own, separate grant with narrower scopes
+(`REMOTE_SCOPES` in `auth.py`):
+
+```
+user-library-read user-top-read user-read-recently-played playlist-modify-private
+```
+
+It's seeded from this machine by `scripts/seed_remote_spotify_token.py`,
+which runs the same browser flow below but writes the token, encrypted, to
+the MCP project's Redis instead of `~/.selector/token.json`. The hosted
+server never runs the browser flow: a missing or dead token is an error
+that says to re-run the seeding script. See `docs/DEPLOY_MCP.md`.
+
 ## How the flow works end to end
 
 1. `get_valid_token()` checks `~/.selector/token.json`. If there's a valid,

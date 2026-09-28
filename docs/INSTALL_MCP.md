@@ -92,7 +92,10 @@ query plus `warehouse_summary` as an orientation call: `warehouse_summary`,
 **Live Spotify tools** (need `SPOTIFY_CLIENT_ID`, see `docs/OAUTH_NOTES.md`):
 `spotify_search`, `spotify_saved_tracks`, `spotify_top_artists`,
 `spotify_top_tracks`, `spotify_recently_played`, `spotify_create_playlist`,
-`reconcile_library`.
+`reconcile_library`. All but `reconcile_library` are also on the hosted
+server, with its own Spotify login (see `docs/DEPLOY_MCP.md`). After a
+deploy that changes the hosted tool list, reconnect the claude.ai connector
+so it picks up the new list.
 
 **Fly brain tools** (read `data/fly_tags.npz`, built by Step 12's
 `uv run python -m selector.fly.pipeline`): `more_like_this(track, k)` —

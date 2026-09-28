@@ -24,6 +24,12 @@ DEPLOYED_TOOL_NAMES = {
     "listening_clock",
     "taste_drift",
     "rediscovery_candidates",
+    "spotify_search",
+    "spotify_saved_tracks",
+    "spotify_top_artists",
+    "spotify_top_tracks",
+    "spotify_recently_played",
+    "spotify_create_playlist",
 }
 
 
@@ -99,12 +105,12 @@ def test_every_deployed_tool_answers(warehouses, monkeypatch):
         "skip_offenders": {"min_plays": 1},
         "rediscovery_candidates": {"dormant_months": 1, "min_past_plays": 1},
     }
-    for fn in http_server.DEPLOY_TOOLS:
+    for fn in http_server.WAREHOUSE_TOOLS:
         out = fn(**calls.get(fn.__name__, {}))
         assert not out.startswith(("Query failed", "No warehouse")), (fn.__name__, out)
         assert "_No rows matched._" not in out, fn.__name__
 
 
-def test_http_server_serves_only_the_warehouse_tools():
+def test_http_server_serves_only_the_deploy_tools():
     tools = asyncio.run(http_server.deploy_server.list_tools())
     assert {t.name for t in tools} == DEPLOYED_TOOL_NAMES

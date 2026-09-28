@@ -12,8 +12,6 @@ in a chat transcript than a raw JSON dump. The warehouse path comes from the
 from __future__ import annotations
 
 import json
-import os
-from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +22,15 @@ from mcp.server.mcpserver import MCPServer
 
 from selector.fly import pipeline as fly_pipeline
 from selector.fly.lsh import hamming_distances, hamming_top_k
+from selector.mcp.spotify_tools import (
+    LOCAL_READ_TOOLS,
+    READ_ANNOTATIONS,
+    WRITE_ANNOTATIONS,
+    SpotifyNotConfigured,
+    add_spotify_tools,
+    local_client,
+    run_spotify,
+)
 from selector.mcp.warehouse_tools import (  # noqa: F401 - re-exported for callers and tests
     DB_ENV_VAR,
     DEFAULT_DB_PATH,
@@ -43,8 +50,7 @@ from selector.mcp.warehouse_tools import (  # noqa: F401 - re-exported for calle
     track_detail,
     warehouse_summary,
 )
-from selector.spotify.auth import SpotifyAuthError
-from selector.spotify.client import SpotifyAPIError, SpotifyClient
+from selector.spotify.client import SpotifyClient
 from selector.spotify.reconcile import reconcile_library as _reconcile_library
 from selector.warehouse import queries, wrapped
 
@@ -95,160 +101,15 @@ def wrapped_report(top_n: int = 5, save_html: bool = False, year: int | None = N
 
 # -- live Spotify API tools ---------------------------------------------
 #
-# Everything below calls the live Spotify Web API rather than the local
-# warehouse. Only endpoints that survived the November 2024 deprecation are
-# used — no audio-features, audio-analysis, recommendations, related-artists,
-# or preview URLs.
+# The read tools are shared with the hosted server (`spotify_tools.py`).
+# This server's `spotify_create_playlist` (with a `public` flag and no
+# daily cap) and `reconcile_library` (which needs the full warehouse) stay
+# local-only.
 
-_spotify_client: SpotifyClient | None = None
-
-
-def _track_row(track: dict) -> dict:
-    artists = track.get("artists") or []
-    album = track.get("album") or {}
-    return {
-        "name": track.get("name", ""),
-        "artist": artists[0]["name"] if artists else "",
-        "album": album.get("name", ""),
-        "uri": track.get("uri", ""),
-    }
+add_spotify_tools(server, LOCAL_READ_TOOLS)
 
 
-def _artist_row(artist: dict) -> dict:
-    return {
-        "name": artist.get("name", ""),
-        "genres": ", ".join((artist.get("genres") or [])[:3]),
-        "popularity": artist.get("popularity"),
-        "uri": artist.get("uri", ""),
-    }
-
-
-def _run_spotify(fn: Callable[[SpotifyClient], str]) -> str:
-    """Call `fn` with a live Spotify client, keeping auth/API failures as
-    plain text for the model rather than exceptions — same rationale as
-    `_run` for the warehouse queries.
-    """
-    client_id = os.environ.get("SPOTIFY_CLIENT_ID")
-    if not client_id:
-        return (
-            "SPOTIFY_CLIENT_ID is not set. Register a Spotify developer app "
-            "and add it to `.env` — see `docs/OAUTH_NOTES.md` for the exact "
-            "steps and the redirect URI to register."
-        )
-
-    global _spotify_client
-    if _spotify_client is None or _spotify_client.client_id != client_id:
-        _spotify_client = SpotifyClient(client_id=client_id)
-
-    try:
-        return fn(_spotify_client)
-    except SpotifyAuthError as exc:
-        return f"Spotify authorization failed: {exc}"
-    except SpotifyAPIError as exc:
-        return f"Spotify API error: {exc}"
-    except Exception as exc:  # noqa: BLE001 - surfaced to the model as text, not a crash
-        return f"Unexpected error calling Spotify: {exc}"
-
-
-@server.tool()
-def spotify_search(query: str, item_type: str = "track", limit: int = 10) -> str:
-    """Search Spotify's full catalogue (not just this person's library) for
-    tracks, artists, albums, or playlists. `item_type` is one of "track",
-    "artist", "album", "playlist", or a comma-separated combination like
-    "track,artist". The `uri` field in the results is what
-    `spotify_create_playlist` expects for `track_uris`.
-    """
-
-    def _call(client: SpotifyClient) -> str:
-        data = client.search(query, types=item_type, limit=limit)
-        sections = []
-        for key, row_fn in (
-            ("tracks", _track_row),
-            ("artists", _artist_row),
-        ):
-            items = (data.get(key) or {}).get("items") or []
-            if items:
-                rows = [row_fn(item) for item in items if item]
-                sections.append(f"**{key}**\n\n{_df_to_markdown(pd.DataFrame(rows))}")
-        for key in ("albums", "playlists"):
-            items = (data.get(key) or {}).get("items") or []
-            if items:
-                rows = [{"name": i.get("name", ""), "uri": i.get("uri", "")} for i in items if i]
-                sections.append(f"**{key}**\n\n{_df_to_markdown(pd.DataFrame(rows))}")
-        return "\n\n".join(sections) if sections else "_No results._"
-
-    return _run_spotify(_call)
-
-
-@server.tool()
-def spotify_saved_tracks(limit: int = 20) -> str:
-    """List this person's saved ("liked") tracks from their live Spotify
-    library, most recently saved first. `limit` is capped at 50 (one API
-    page); for a full reconciliation against listening history, use
-    `reconcile_library` instead.
-    """
-
-    def _call(client: SpotifyClient) -> str:
-        data = client.saved_tracks(limit=limit)
-        rows = [_track_row(item["track"]) for item in data.get("items", []) if item.get("track")]
-        return _df_to_markdown(pd.DataFrame(rows))
-
-    return _run_spotify(_call)
-
-
-@server.tool()
-def spotify_top_artists(time_range: str = "medium_term", limit: int = 20) -> str:
-    """List this person's top artists by Spotify's own listening algorithm —
-    distinct from the historical warehouse's `top_artists`, which counts raw
-    plays from the export. `time_range` is "short_term" (~4 weeks),
-    "medium_term" (~6 months), or "long_term" (years).
-    """
-
-    def _call(client: SpotifyClient) -> str:
-        data = client.top_items("artists", time_range=time_range, limit=limit)
-        rows = [_artist_row(a) for a in data.get("items", [])]
-        return _df_to_markdown(pd.DataFrame(rows))
-
-    return _run_spotify(_call)
-
-
-@server.tool()
-def spotify_top_tracks(time_range: str = "medium_term", limit: int = 20) -> str:
-    """List this person's top tracks by Spotify's own listening algorithm —
-    distinct from the historical warehouse's play-count-based queries.
-    `time_range` is "short_term" (~4 weeks), "medium_term" (~6 months), or
-    "long_term" (years).
-    """
-
-    def _call(client: SpotifyClient) -> str:
-        data = client.top_items("tracks", time_range=time_range, limit=limit)
-        rows = [_track_row(t) for t in data.get("items", [])]
-        return _df_to_markdown(pd.DataFrame(rows))
-
-    return _run_spotify(_call)
-
-
-@server.tool()
-def spotify_recently_played(limit: int = 20) -> str:
-    """List the most recently played tracks straight from Spotify's live
-    playback history. This only covers roughly the last 50 plays — for
-    anything further back, use the historical warehouse tools instead
-    (`top_artists`, `taste_drift`, etc.), which cover the full export.
-    """
-
-    def _call(client: SpotifyClient) -> str:
-        data = client.recently_played(limit=limit)
-        rows = []
-        for item in data.get("items", []):
-            row = _track_row(item.get("track") or {})
-            row["played_at"] = item.get("played_at", "")
-            rows.append(row)
-        return _df_to_markdown(pd.DataFrame(rows))
-
-    return _run_spotify(_call)
-
-
-@server.tool()
+@server.tool(annotations=WRITE_ANNOTATIONS)
 def spotify_create_playlist(
     name: str,
     description: str = "",
@@ -273,10 +134,10 @@ def spotify_create_playlist(
             f"with {n} track{'s' if n != 1 else ''}. Open it: {url}"
         )
 
-    return _run_spotify(_call)
+    return run_spotify(local_client, _call)
 
 
-@server.tool()
+@server.tool(annotations=READ_ANNOTATIONS)
 def reconcile_library() -> str:
     """Compare this person's live Spotify saved-tracks library against the
     historical listening warehouse. Reports three things: tracks saved but
@@ -298,7 +159,7 @@ def reconcile_library() -> str:
         ]
         return "\n\n".join(f"**{title}**\n\n{_df_to_markdown(df)}" for title, df in sections)
 
-    return _run_spotify(_call)
+    return run_spotify(local_client, _call)
 
 
 # -- fly brain tools ------------------------------------------------------
@@ -543,11 +404,10 @@ def dj_set(
     if not fly_pipeline.FLY_TAGS_PATH.exists():
         return _missing_fly_tags_message(fly_pipeline.FLY_TAGS_PATH)
 
-    client_id = os.environ.get("SPOTIFY_CLIENT_ID")
-    global _spotify_client
-    if client_id and (_spotify_client is None or _spotify_client.client_id != client_id):
-        _spotify_client = SpotifyClient(client_id=client_id)
-    client = _spotify_client if client_id else None
+    try:
+        client = local_client()
+    except SpotifyNotConfigured:
+        client = None
 
     try:
         if _dj_crate is None:

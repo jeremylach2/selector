@@ -9,5 +9,7 @@ duckdb>=1.1
 pandas>=2.2
 pyarrow>=17.0
 httpx>=0.27
+# Encrypts the Spotify token at rest (selector.spotify.remote_store).
+cryptography>=43
 python-dotenv>=1.0
 pydantic>=2.9

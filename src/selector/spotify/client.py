@@ -15,7 +15,7 @@ from pathlib import Path
 
 import httpx
 
-from selector.spotify.auth import DEFAULT_TOKEN_PATH, get_valid_token
+from selector.spotify.auth import DEFAULT_TOKEN_PATH, TokenStore, get_valid_token
 
 API_BASE = "https://api.spotify.com/v1"
 
@@ -42,15 +42,26 @@ class RequestLogEntry:
 class SpotifyClient:
     """One client per process is enough — it re-authenticates lazily and
     caches the token in memory for the life of the object.
+
+    `store` overrides `token_path` (the hosted server passes a Redis
+    store), and `interactive=False` means a missing token is an error
+    rather than a browser login. `max_retry_after` caps how long a 429 may
+    make it sleep: past that it raises instead, so one throttled call
+    can't outlast a serverless function's time limit.
     """
 
     client_id: str
     token_path: Path = DEFAULT_TOKEN_PATH
+    store: TokenStore | None = None
+    interactive: bool = True
+    max_retry_after: float | None = None
     request_log: list[RequestLogEntry] = field(default_factory=list)
     _http: httpx.Client = field(default_factory=lambda: httpx.Client(base_url=API_BASE, timeout=15.0))
 
     def _auth_headers(self) -> dict[str, str]:
-        token = get_valid_token(self.client_id, self.token_path)
+        token = get_valid_token(
+            self.client_id, self.store or self.token_path, interactive=self.interactive
+        )
         return {"Authorization": f"Bearer {token.access_token}"}
 
     def _request(self, method: str, path: str, **kwargs) -> dict:
@@ -66,6 +77,8 @@ class SpotifyClient:
 
             if response.status_code == 429:
                 retry_after = float(response.headers.get("Retry-After", DEFAULT_RETRY_AFTER_SECONDS))
+                if self.max_retry_after is not None and retry_after > self.max_retry_after:
+                    raise SpotifyAPIError(429, f"rate limited, retry in {retry_after:.0f}s")
                 time.sleep(retry_after)
                 continue
             if response.status_code >= 500:
@@ -158,3 +171,7 @@ class SpotifyClient:
                 "POST", f"/playlists/{playlist_id}/items", json={"uris": chunk}
             )
         return result
+
+    def unfollow_playlist(self, playlist_id: str) -> dict:
+        # Unfollowing your own playlist is how the Web API deletes it.
+        return self._request("DELETE", f"/playlists/{playlist_id}/followers")

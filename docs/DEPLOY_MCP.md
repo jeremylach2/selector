@@ -2,32 +2,33 @@
 
 `docs/INSTALL_MCP.md` covers the stdio server for local Claude Code/Desktop
 use. This covers a second, independent entrypoint — `api/index.py` — that
-exposes the same warehouse tools over Streamable HTTP so the server is
-reachable from anywhere, not just this machine.
+exposes the warehouse tools and the live Spotify tools, including playlist
+creation, over Streamable HTTP so the server is reachable from anywhere,
+not just this machine.
 
 ## Scope
 
-Only the read-only warehouse tools (`warehouse_summary`, `search_library`,
-`top_artists`, `binged_then_abandoned`, `skip_offenders`, `listening_clock`,
-`taste_drift`, `rediscovery_candidates`, `track_detail`) are exposed here.
-`DEPLOY_TOOLS` in `http_server.py` is the list, and
-`tests/test_deploy_warehouse.py` fails if it grows. Everything else stays
-local-only:
+The hosted server exposes two sets of tools. `DEPLOY_TOOLS` in
+`http_server.py` is the list, and `tests/test_deploy_warehouse.py` fails if
+it changes:
 
-- **Live Spotify tools** (`spotify_*`, `reconcile_library`). Their OAuth
-  flow opens a local browser and catches the redirect on `127.0.0.1:8899`
-  (see `src/selector/spotify/auth.py`), which has no equivalent on a
-  stateless serverless function, and `spotify_create_playlist` writes to
-  the account. Keeping Web API results off the remote server also keeps the
-  Spotify-content boundary in `docs/PRIVACY.md` simple.
+- **Warehouse tools**, read-only: `warehouse_summary`, `search_library`,
+  `top_artists`, `binged_then_abandoned`, `skip_offenders`,
+  `listening_clock`, `taste_drift`, `rediscovery_candidates`,
+  `track_detail`.
+- **Live Spotify tools**: `spotify_search`, `spotify_saved_tracks`,
+  `spotify_top_artists`, `spotify_top_tracks`, `spotify_recently_played`,
+  and a guarded `spotify_create_playlist` (see
+  [Live Spotify tools](#live-spotify-tools)).
+
+Everything else stays local-only:
+
+- **`reconcile_library`**, which hasn't been checked against the coarse
+  deploy warehouse.
 - **Fly-brain and DJ tools** (`more_like_this`, `fly_score`, `dj_set`).
   They need `data/fly_tags.npz` and train the mushroom body on the per-play
   history, neither of which is shipped.
 - **`wrapped_report`**, which writes files next to the warehouse.
-
-Before this list existed, the HTTP app served the stdio server's full tool
-set, so the Spotify tools were listed remotely even though they couldn't
-authenticate.
 
 ## What data is served
 
@@ -58,21 +59,18 @@ It is still personal: the hour buckets barely merge anything (about 41k rows
 for 44k plays), so it says roughly what was played in which hour. The
 bearer token is what keeps it private.
 
-## Why no Redis (yet)
+## Why Redis
 
-Two things made the "hosting the data" problem smaller than it looked:
+The warehouse needs no server-side state: it's about 4MB, read-only, and
+downloaded once per cold start from Blob. The server runs in
+`stateless_http=True` mode, so no MCP session needs persisting either.
 
-- The tools above only ever read the deploy warehouse, which is **about
-  4MB**, not the 1.2GB `data/` directory as a whole (that's dominated by
-  raw audio and the flywire model, neither of which the MCP server
-  touches). One download per cold start from a same-platform Blob store is
-  cheap, and the file then sits in `/tmp` for as long as the instance
-  lives.
-- The server runs in `stateless_http=True` mode — every request is
-  independent, with no server-side session to persist across the cold
-  starts a serverless function is subject to. Redis becomes relevant again
-  the moment this needs to remember something between requests (an
-  authenticated Spotify token being the obvious case).
+The Spotify tools do need state that outlives an instance and can be
+written: the Spotify token, which refreshes every hour and can come back
+with a new refresh token. That lives in Upstash Redis (Vercel
+Marketplace), connected only to this project, along with a refresh lock,
+the daily playlist counter and the playlist audit log. Redis rather than
+the existing Blob store because it has atomic `SET NX` and `INCR`.
 
 ## What was added
 
@@ -84,6 +82,14 @@ Two things made the "hosting the data" problem smaller than it looked:
   from `api/index.py` and fails if anything it can reach needs a package
   `requirements.txt` doesn't install. That's how a deploy once crashed on
   every request with `No module named 'scipy'`.
+- `src/selector/mcp/spotify_tools.py` — the live Spotify tools. The five
+  read tools are built once per transport from the same definitions: the
+  stdio server binds them to the local token file, the hosted server to
+  the Redis store. The hosted `spotify_create_playlist` is its own
+  function with the guardrails below.
+- `src/selector/spotify/remote_store.py` — `RedisTokenStore`, the
+  encrypted Redis token store, and a minimal Upstash REST client over
+  `httpx`.
 - `src/selector/mcp/http_server.py` — registers those tools (and never
   imports `server.py`) on its own `deploy_server`,
   exposes it as an ASGI `app` via
@@ -145,6 +151,58 @@ That protection defends against a browser being tricked into hitting a
 *local* MCP server from a malicious page; it doesn't apply here, where the
 bearer token is the actual access control.
 
+Since the Spotify tools, the bearer token can also create playlists on the
+account, not just read listening stats, and it never expires. The daily
+cap and input checks bound what a leaked token can do. Rotate it if it has
+been anywhere it shouldn't. Replacing it with OAuth that logs in through
+Spotify is Phase 2 of `docs/REMOTE_SPOTIFY_PLAN.md`.
+
+## Live Spotify tools
+
+The hosted server has its own Spotify login, separate from the local
+`~/.selector/token.json`. A PKCE refresh can hand back a new refresh token,
+so if the two shared one, a refresh on either side could break the other.
+
+- **Seeding.** `scripts/seed_remote_spotify_token.py` runs the usual
+  browser login on this machine with narrower scopes (`REMOTE_SCOPES` in
+  `auth.py`: library, top items, recently played,
+  `playlist-modify-private`) and writes the result to Redis.
+- **At rest.** The token set is encrypted with Fernet under
+  `SELECTOR_TOKEN_KEY` (a sensitive Vercel env var), so the Redis data
+  alone is useless. `scripts/setup_remote_spotify.py` generates the key and
+  sets it without printing it.
+- **No browser, ever.** The hosted client runs with `interactive=False`: a
+  missing token or a refresh token Spotify rejects is an error telling you
+  to re-seed.
+- **Refreshes.** Held under a Redis lock (`SET NX PX`), and the token is
+  reloaded once the lock is held, so concurrent requests on a reused
+  instance refresh once.
+- **Timeouts.** A 429 with a `Retry-After` over 10 seconds raises instead
+  of sleeping past the function's 60 second limit.
+
+`spotify_create_playlist` on the hosted server differs from the local one:
+
+- There is no `public` parameter: every playlist is kept off the profile.
+  The Spotify app still lists it as Public until you pick "Make private"
+  there (see `docs/OAUTH_NOTES.md`).
+- Names are 1 to 100 characters, at most 500 tracks, and every URI must be
+  a `spotify:track:` URI. Anything else is refused before Spotify is called.
+- At most 20 playlists per UTC day, counted in Redis.
+- Tracks are added after the playlist is created. If that fails, the empty
+  playlist is deleted again (unfollowed, which is how the API deletes your
+  own playlist).
+- The description gets " · made with Selector" appended, so remote
+  creations are easy to find.
+- Each creation is logged to the `spotify:audit` Redis list (time, id,
+  name, track count), trimmed to the last 200.
+- It's annotated as a write (`readOnlyHint: false`) and the read tools as
+  reads, so clients that honour annotations ask before creating.
+
+To switch the Spotify tools off, set `SELECTOR_REMOTE_SPOTIFY=off` and
+redeploy, or delete the `spotify:token` key in Redis for an immediate
+stop. To revoke the login entirely, remove the app at spotify.com →
+Account → Apps. That revokes the local login too.
+
 ## Deploying
 
 Code deploys from Git. The project is connected to the GitHub repo with
@@ -165,6 +223,15 @@ uv run python scripts/rotate_mcp_token.py     # sets SELECTOR_MCP_TOKEN, never p
 vercel env pull .env.local --environment=production   # brings BLOB_READ_WRITE_TOKEN (gitignored)
 ```
 
+For the Spotify tools, also:
+
+```
+vercel integration add upstash                # Redis; connect it to the MCP project only
+uv run python scripts/setup_remote_spotify.py # sets SELECTOR_TOKEN_KEY (never printed) and SPOTIFY_CLIENT_ID
+vercel env pull .env.local --environment=production   # brings the Redis URL and token
+uv run python scripts/seed_remote_spotify_token.py    # browser login; writes the encrypted token to Redis
+```
+
 The Blob store is separate from the web project's, so neither project's
 token can read the other's private data. `vercel deploy --prod` still
 works for a one-off deploy and produces the same thing, since no data is
@@ -173,6 +240,10 @@ bundled either way.
 Then point any Streamable-HTTP-capable MCP client at
 `https://<your-deployment>.vercel.app/mcp` with the header
 `Authorization: Bearer <token>`.
+
+`uv run python scripts/check_mcp_deploy.py` checks auth, the warehouse and
+a Spotify search through the hosted token. Add `--write` to also create a
+one-track playlist through the hosted server and delete it again.
 
 ## Keeping the warehouse current
 

@@ -10,6 +10,13 @@ redirect on a local loopback server, exchange the code (plus the PKCE
 verifier) for tokens, and cache them to ``~/.selector/token.json``. Later
 calls silently refresh an expired access token using the cached refresh
 token, so only the very first run needs a browser.
+
+Where the token lives is a `TokenStore`. Locally that's `FileTokenStore`
+(the JSON file above). The hosted MCP server uses
+`selector.spotify.remote_store.RedisTokenStore` with `interactive=False`,
+since a serverless function has no browser and no loopback port: there,
+a missing or dead token is an error telling you to re-seed, never a
+browser flow.
 """
 
 from __future__ import annotations
@@ -21,10 +28,12 @@ import os
 import secrets
 import time
 import webbrowser
+from collections.abc import Iterator
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import asdict, dataclass
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, Protocol
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import httpx
@@ -41,6 +50,14 @@ REDIRECT_URI = f"http://{LOOPBACK_HOST}:{LOOPBACK_PORT}/callback"
 SCOPES = (
     "user-library-read user-top-read playlist-modify-private playlist-modify-public "
     "playlist-read-private user-read-recently-played"
+)
+
+# What the hosted MCP server's own grant asks for (seeded by
+# `scripts/seed_remote_spotify_token.py`): reads, plus creating playlists
+# kept off the profile. No public-playlist writes, no reading private
+# playlists.
+REMOTE_SCOPES = (
+    "user-library-read user-top-read user-read-recently-played playlist-modify-private"
 )
 
 DEFAULT_TOKEN_PATH = Path.home() / ".selector" / "token.json"
@@ -108,7 +125,7 @@ class _CallbackHandler(BaseHTTPRequestHandler):
         pass  # silence the default stderr access log
 
 
-def _run_authorize_flow(client_id: str) -> dict[str, str]:
+def _run_authorize_flow(client_id: str, scopes: str = SCOPES) -> dict[str, str]:
     verifier, challenge = _generate_pkce_pair()
     state = secrets.token_urlsafe(16)
 
@@ -116,7 +133,7 @@ def _run_authorize_flow(client_id: str) -> dict[str, str]:
         "client_id": client_id,
         "response_type": "code",
         "redirect_uri": REDIRECT_URI,
-        "scope": SCOPES,
+        "scope": scopes,
         "state": state,
         "code_challenge_method": "S256",
         "code_challenge": challenge,
@@ -201,27 +218,77 @@ def _save_token(token_path: Path, token: TokenSet) -> None:
         pass  # best-effort on platforms without POSIX permissions (Windows)
 
 
+class TokenStore(Protocol):
+    """Somewhere a `TokenSet` survives between calls."""
+
+    def load(self) -> TokenSet | None: ...
+
+    def save(self, token: TokenSet) -> None: ...
+
+    def refresh_lock(self) -> AbstractContextManager[None]:
+        """Held while refreshing, so concurrent callers don't all refresh."""
+        ...
+
+
+class FileTokenStore:
+    """The local cache, `~/.selector/token.json` by default. One process
+    at a time uses it, so its lock is a no-op."""
+
+    def __init__(self, path: Path = DEFAULT_TOKEN_PATH) -> None:
+        self.path = Path(path)
+
+    def load(self) -> TokenSet | None:
+        return _load_cached_token(self.path)
+
+    def save(self, token: TokenSet) -> None:
+        _save_token(self.path, token)
+
+    @contextmanager
+    def refresh_lock(self) -> Iterator[None]:
+        yield
+
+
 def get_valid_token(
     client_id: str,
-    token_path: Path = DEFAULT_TOKEN_PATH,
+    store: TokenStore | Path = DEFAULT_TOKEN_PATH,
+    interactive: bool = True,
 ) -> TokenSet:
     """Return a usable access token, refreshing or running the full PKCE
     browser flow as needed. This is the only function most callers need.
-    """
-    cached = _load_cached_token(token_path)
 
+    With `interactive=False` the browser flow never runs: no token, or a
+    refresh token Spotify no longer accepts, raises `SpotifyAuthError`.
+    """
+    if isinstance(store, (str, Path)):
+        store = FileTokenStore(Path(store))
+
+    cached = store.load()
     if cached is not None and not cached.is_expired():
         return cached
 
     if cached is not None:
-        try:
-            refreshed = _refresh_token(client_id, cached.refresh_token)
-            _save_token(token_path, refreshed)
-            return refreshed
-        except SpotifyAuthError:
-            pass  # refresh token itself expired/revoked — fall through to a full re-auth
+        with store.refresh_lock():
+            # Another request may have refreshed while this one waited.
+            cached = store.load() or cached
+            if not cached.is_expired():
+                return cached
+            try:
+                refreshed = _refresh_token(client_id, cached.refresh_token)
+                store.save(refreshed)
+                return refreshed
+            except SpotifyAuthError as exc:
+                if not interactive:
+                    raise SpotifyAuthError(
+                        f"{exc}. Re-seed the token: uv run python scripts/seed_remote_spotify_token.py"
+                    ) from exc
+                # refresh token itself expired/revoked: fall through to a full re-auth
+
+    if not interactive:
+        raise SpotifyAuthError(
+            "No Spotify token is stored. Seed one: uv run python scripts/seed_remote_spotify_token.py"
+        )
 
     auth_result = _run_authorize_flow(client_id)
     token = _exchange_code_for_token(client_id, auth_result["code"], auth_result["verifier"])
-    _save_token(token_path, token)
+    store.save(token)
     return token

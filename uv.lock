@@ -3152,6 +3152,7 @@ source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
     { name = "av" },
+    { name = "cryptography" },
     { name = "duckdb" },
     { name = "httpx" },
     { name = "librosa" },
@@ -3186,6 +3187,7 @@ dev = [
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40" },
     { name = "av", specifier = ">=13.0" },
+    { name = "cryptography", specifier = ">=43" },
     { name = "datasets", marker = "extra == 'finetune'", specifier = ">=3.0" },
     { name = "duckdb", specifier = ">=1.1" },
     { name = "httpx", specifier = ">=0.27" },
