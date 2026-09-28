@@ -76,9 +76,16 @@ Two things made the "hosting the data" problem smaller than it looked:
 
 ## What was added
 
-- `src/selector/mcp/http_server.py` — registers the `DEPLOY_TOOLS` subset of
-  the functions `server.py` defines (so tool definitions never drift
-  between the stdio and HTTP entrypoints) on its own `deploy_server`,
+- `src/selector/mcp/warehouse_tools.py` — the nine read-only warehouse tools
+  and their formatting helpers, importing nothing outside
+  `requirements.txt`. `server.py` and `http_server.py` both register these
+  same functions, so tool definitions never drift between the stdio and
+  HTTP entrypoints. `tests/test_deploy_imports.py` walks the import graph
+  from `api/index.py` and fails if anything it can reach needs a package
+  `requirements.txt` doesn't install. That's how a deploy once crashed on
+  every request with `No module named 'scipy'`.
+- `src/selector/mcp/http_server.py` — registers those tools (and never
+  imports `server.py`) on its own `deploy_server`,
   exposes it as an ASGI `app` via
   `deploy_server.streamable_http_app(stateless_http=True)`, and wraps it in
   a bearer-token auth check.

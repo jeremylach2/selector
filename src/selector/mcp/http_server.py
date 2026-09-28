@@ -1,17 +1,18 @@
 """ASGI entrypoint for running the Selector MCP server over Streamable HTTP.
 
 `server.py` defines every tool and stays stdio-only for local Claude Code /
-Desktop use per `docs/INSTALL_MCP.md`. This module registers a subset of
-those same functions (so tool definitions never drift between the two
-transports) on a second server, `deploy_server`, and exposes it as a plain
-ASGI `app`, suitable for a Vercel Python function or any other ASGI host.
-See `docs/DEPLOY_MCP.md`.
+Desktop use per `docs/INSTALL_MCP.md`. This module registers only the
+read-only warehouse tools (`warehouse_tools.WAREHOUSE_TOOLS`, the same
+functions `server.py` registers, so definitions never drift between the
+two transports) on its own `deploy_server`, and exposes it as a plain ASGI
+`app`, suitable for a Vercel Python function or any other ASGI host. See
+`docs/DEPLOY_MCP.md`.
 
-Only the read-only warehouse tools in `DEPLOY_TOOLS` are served. The live
-Spotify tools need a local OAuth flow and could write to the account, the
-fly-brain and DJ tools need files the deployment doesn't ship (and the
-mushroom body trains on per-play history), and `wrapped_report` writes to
-disk.
+It deliberately never imports `server.py`, which pulls in scipy and the
+Spotify client. The live Spotify tools need a local OAuth flow and could
+write to the account, the fly-brain and DJ tools need files the
+deployment doesn't ship (and the mushroom body trains on per-play
+history), and `wrapped_report` writes to disk.
 
 Two deliberate choices, both driven by this being a single-user deployment:
 
@@ -34,21 +35,11 @@ from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from selector.mcp import server as stdio
+from selector.mcp.warehouse_tools import INSTRUCTIONS, WAREHOUSE_TOOLS
 
-DEPLOY_TOOLS = (
-    stdio.warehouse_summary,
-    stdio.search_library,
-    stdio.track_detail,
-    stdio.top_artists,
-    stdio.binged_then_abandoned,
-    stdio.skip_offenders,
-    stdio.listening_clock,
-    stdio.taste_drift,
-    stdio.rediscovery_candidates,
-)
+DEPLOY_TOOLS = WAREHOUSE_TOOLS
 
-deploy_server = MCPServer(name=stdio.server.name, instructions=stdio.server.instructions)
+deploy_server = MCPServer(name="selector", instructions=INSTRUCTIONS)
 for _tool in DEPLOY_TOOLS:
     deploy_server.add_tool(_tool)
 
