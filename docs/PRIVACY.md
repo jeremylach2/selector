@@ -104,9 +104,8 @@ Vercel.
   `requirements.txt`, `vercel.json`), so env files, private reports and
   `data/` never reach Vercel. The upload refuses any file with per-play
   tables or time columns.
-- **Static bearer (being retired):** while `SELECTOR_MCP_TOKEN` is still
-  set, it's accepted alongside OAuth tokens so clients can move over.
-  `scripts/rotate_mcp_token.py` sets it without ever printing it.
+- **Static bearer (retired):** the old shared `SELECTOR_MCP_TOKEN` is no
+  longer set, so the only way in is the Spotify login.
 
 The hour buckets still show roughly what was played when, and a token can
 also create playlists on the account (at most 20 a day). The Spotify login

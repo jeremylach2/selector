@@ -180,10 +180,10 @@ deletes every MCP token, code and pending login, immediately.
 Spotify token. Rotating `SELECTOR_TOKEN_KEY` makes everything in Redis
 unreadable at once, and forces a fresh login.
 
-**The old static bearer.** Until `SELECTOR_MCP_TOKEN` is removed, that
-value is accepted too (compared in constant time), so clients can move
-over one at a time. Once every client logs in with OAuth, run
-`vercel env rm SELECTOR_MCP_TOKEN production` and redeploy.
+**The old static bearer is retired.** `SELECTOR_MCP_TOKEN` is no longer
+set on production, so OAuth is the only way in. `oauth.py` would still
+accept it as an access token if it were set again, which is how clients
+were moved over one at a time.
 
 The SDK's built-in DNS-rebinding protection is explicitly disabled
 (`enable_dns_rebinding_protection=False` in `http_server.py`) — it checks

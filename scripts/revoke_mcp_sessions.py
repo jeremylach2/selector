@@ -8,11 +8,11 @@ again. Takes effect immediately, no deploy needed.
 - `--spotify` also deletes the hosted server's Spotify token, which stops
   the Spotify tools until the next login.
 
-The static `SELECTOR_MCP_TOKEN`, while it's still set, isn't in Redis:
-remove it with `vercel env rm SELECTOR_MCP_TOKEN production` and redeploy.
-Rotating `SELECTOR_TOKEN_KEY` (`setup_remote_spotify.py --rotate`) has the
-same effect as `--clients --spotify` once deployed. Needs the Redis pair in
-`.env.local`. Prints only counts.
+The retired static `SELECTOR_MCP_TOKEN` isn't in Redis: if it's ever set
+again, remove it with `vercel env rm SELECTOR_MCP_TOKEN production` and
+redeploy. Rotating `SELECTOR_TOKEN_KEY` (`setup_remote_spotify.py
+--rotate`) has the same effect as `--clients --spotify` once deployed.
+Needs the Redis pair in `.env.local`. Prints only counts.
 
     uv run python scripts/revoke_mcp_sessions.py [--clients] [--spotify]
 """

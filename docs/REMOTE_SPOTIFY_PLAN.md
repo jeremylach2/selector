@@ -47,11 +47,15 @@ Spotify auth flow) and `docs/PRIVACY.md` (what may leave this machine).
     `SELECTOR_MCP_TOKEN` is set, it's accepted as an access token too.
   - `check_mcp_deploy.py` now mints a five-minute access token straight
     into Redis, so it keeps working once the static bearer is gone.
-- **Phase 2 operations:** `setup_mcp_oauth.py` has run (both vars set on
-  production). Left: register
-  `https://selector-mcp.vercel.app/oauth/spotify/callback` on the Spotify
-  app, reconnect the claude.ai connector with no token, then remove
-  `SELECTOR_MCP_TOKEN` and `rotate_mcp_token.py` (Step 5's last part).
+- **Phase 2 operations: done.** `setup_mcp_oauth.py` set both vars on
+  production. The Spotify app has
+  `https://selector-mcp.vercel.app/oauth/spotify/callback` as a second
+  redirect URI. `check_mcp_deploy.py` passed against the deploy (OAuth
+  discovery, a minted access token, 15 tools, `spotify_search`). The
+  claude.ai connector was re-added with no token and logs in through
+  Spotify. `SELECTOR_MCP_TOKEN` was then removed from production and
+  `rotate_mcp_token.py` deleted, so OAuth is the only way in. **Phase 2 is
+  complete.**
 - **Open question 2 answered:** a second grant leaves the first working.
   After seeding, the local refresh token still refreshed.
 - **Open question 3 answered:** the claude.ai connector sends the static
