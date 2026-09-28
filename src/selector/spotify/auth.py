@@ -158,7 +158,7 @@ def _run_authorize_flow(client_id: str, scopes: str = SCOPES) -> dict[str, str]:
     if "error" in result:
         raise SpotifyAuthError(f"Spotify returned an error: {result['error']}")
     if result.get("state") != state:
-        raise SpotifyAuthError("OAuth state mismatch — possible CSRF, aborting")
+        raise SpotifyAuthError("OAuth state mismatch, possible CSRF, aborting")
     if "code" not in result:
         raise SpotifyAuthError("No authorization code in Spotify's redirect")
 

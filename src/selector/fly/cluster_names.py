@@ -64,7 +64,7 @@ def _prompt(row: pd.Series, tracks: pd.DataFrame) -> str:
     for tid in row["exemplars"]:
         if tid in by_id.index:
             t = by_id.loc[tid]
-            lines.append(f"- {t['name']} — {t['artist']}")
+            lines.append(f"- {t['name']} by {t['artist']}")
     return "\n".join(lines)
 
 

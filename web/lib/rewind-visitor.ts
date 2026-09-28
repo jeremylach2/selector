@@ -214,7 +214,7 @@ function cardTopTracks(ctx: Ctx): AnyCard | null {
     headline: `Your #1 track was "${names[top[0].t]}" by ${artists[top[0].t]}`,
     value: top.map((r) => ({ name: names[r.t], artist: artists[r.t], play_count: r.plays })),
     sublabel: `${n(top[0].plays)} plays`,
-    evidence: top.slice(0, 3).map((r, i) => `#${i + 1} "${names[r.t]}" — ${artists[r.t]} (${n(r.plays)} plays)`),
+    evidence: top.slice(0, 3).map((r, i) => `#${i + 1} "${names[r.t]}" by ${artists[r.t]} (${n(r.plays)} plays)`),
   };
 }
 
@@ -235,7 +235,7 @@ function cardTopAlbums(ctx: Ctx): AnyCard | null {
     headline: `Your #1 album was "${top[0].album}" by ${top[0].artist}`,
     value: top.map((r) => ({ album: r.album, artist: r.artist, play_count: r.plays })),
     sublabel: `${n(top[0].plays)} plays`,
-    evidence: top.slice(0, 3).map((r, i) => `#${i + 1} "${r.album}" — ${r.artist} (${n(r.plays)} plays)`),
+    evidence: top.slice(0, 3).map((r, i) => `#${i + 1} "${r.album}" by ${r.artist} (${n(r.plays)} plays)`),
   };
 }
 
@@ -295,7 +295,7 @@ function cardTimeOfDay(ctx: Ctx, timeZone: string): AnyCard | null {
     headline: `You listen most around ${clockLabel(peak)} ${label}`,
     value: { timezone: timeZone, timezone_label: label, peak_hour: peak, by_hour: byHour },
     sublabel: `${n(order[0][1])} plays in that hour`,
-    evidence: order.slice(0, 3).map(([h, c]) => `${clockLabel(h)} ${label} — ${n(c)} plays`),
+    evidence: order.slice(0, 3).map(([h, c]) => `${clockLabel(h)} ${label}: ${n(c)} plays`),
   };
 }
 
@@ -317,7 +317,7 @@ function cardSkipOffenders(ctx: Ctx): AnyCard | null {
       skip_rate: Math.round(r.rate * 1000) / 1000,
     })),
     sublabel: `${pct(worst.rate)} skip rate over ${worst.a.plays} plays`,
-    evidence: rows.slice(0, 3).map((r) => `"${names[r.a.t]}" — ${artists[r.a.t]} (${pct(r.rate)} skipped)`),
+    evidence: rows.slice(0, 3).map((r) => `"${names[r.a.t]}" by ${artists[r.a.t]} (${pct(r.rate)} skipped)`),
   };
 }
 
@@ -395,7 +395,7 @@ function cardDecadeHistogram(ctx: Ctx, dated: Dated[]): AnyCard | null {
     value: rows,
     sublabel: `${rows.length} decades represented`,
     coverage: tierB(ctx, dated),
-    evidence: top.slice(0, 3).map((r) => `${r.decade}s — ${pct(r.play_count / total)} (${n(r.play_count)} plays)`),
+    evidence: top.slice(0, 3).map((r) => `${r.decade}s: ${pct(r.play_count / total)} (${n(r.play_count)} plays)`),
   };
 }
 
@@ -565,7 +565,7 @@ function cardHiddenGems(ctx: Ctx, fly: Fly, assets: RewindAssets, summary: Clust
       top.plays === 1 ? "once" : `${top.plays} times`
     }`,
     coverage: tierA(ctx, fly, assets),
-    evidence: gems.slice(0, 3).map((a) => `"${h.names[a.t]}" — ${h.artists[a.t]} (#${n(rank(a))}, ${clusterName(a) ?? "unclustered"})`),
+    evidence: gems.slice(0, 3).map((a) => `"${h.names[a.t]}" by ${h.artists[a.t]} (#${n(rank(a))}, ${clusterName(a) ?? "unclustered"})`),
   };
 }
 

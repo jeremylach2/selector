@@ -46,6 +46,14 @@ out/
 .DS_Store
 Thumbs.db
 
+# Machine-specific MCP config (holds an absolute path; see docs/INSTALL_MCP.md)
+.mcp.json
+
+# Vendored agent skills and their lockfile
+.agents/
+.claude/skills/
+skills-lock.json
+
 # Planning docs — internal, not part of the public repo
 PROMPT-PACK.md
 Selector — Project Plan.md

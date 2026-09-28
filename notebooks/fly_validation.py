@@ -72,7 +72,7 @@ def main() -> None:
     else:
         print(
             "\nFlyHash did NOT beat classical LSH at the shortest hash length. "
-            "This does not match the paper's claim — before trusting this result, "
+            "This does not match the paper's claim. Before trusting this result, "
             "check divisive normalisation (selector.fly.lsh.FlyHash._normalise) "
             "and winner-take-all ordering (selector.fly.lsh.FlyHash._wta_count), "
             "which are the two most common places this benchmark silently breaks."

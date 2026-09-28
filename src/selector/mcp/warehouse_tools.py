@@ -41,7 +41,7 @@ def _db_path() -> Path:
 
 def _missing_db_message(db_path: Path) -> str:
     return (
-        f"No warehouse found at `{db_path}`. It hasn't been built yet — run:\n\n"
+        f"No warehouse found at `{db_path}`. It hasn't been built yet. Run:\n\n"
         "```\n"
         "uv run python -m selector.ingest.load_history\n"
         "uv run python -m selector.warehouse.build\n"

@@ -243,7 +243,7 @@ def _card_top_tracks(df: pd.DataFrame) -> dict[str, Any] | None:
         ],
         "sublabel": f"{int(top['play_count']):,} plays",
         "evidence": [
-            f"#{i + 1} \"{r.name}\" — {r.artist} ({int(r.play_count):,} plays)"
+            f"#{i + 1} \"{r.name}\" by {r.artist} ({int(r.play_count):,} plays)"
             for i, r in enumerate(df.head(3).itertuples())
         ],
     }
@@ -262,7 +262,7 @@ def _card_top_albums(df: pd.DataFrame) -> dict[str, Any] | None:
         ],
         "sublabel": f"{int(top['play_count']):,} plays",
         "evidence": [
-            f"#{i + 1} \"{r.album}\" — {r.artist} ({int(r.play_count):,} plays)"
+            f"#{i + 1} \"{r.album}\" by {r.artist} ({int(r.play_count):,} plays)"
             for i, r in enumerate(df.head(3).itertuples())
         ],
     }
@@ -329,7 +329,7 @@ def _card_time_of_day(db_path: Path) -> dict[str, Any] | None:
         },
         "sublabel": f"{int(peak['play_count']):,} plays in that hour",
         "evidence": [
-            f"{_clock_label(int(r.hour))} {REPORT_TZ_LABEL} — {int(r.play_count):,} plays"
+            f"{_clock_label(int(r.hour))} {REPORT_TZ_LABEL}: {int(r.play_count):,} plays"
             for r in by_hour.head(3).itertuples()
         ],
     }
@@ -353,7 +353,7 @@ def _card_skip_offenders(df: pd.DataFrame) -> dict[str, Any] | None:
         ],
         "sublabel": f"{worst['skip_rate']:.0%} skip rate over {int(worst['play_count'])} plays",
         "evidence": [
-            f"\"{r.name}\" — {r.artist} ({r.skip_rate:.0%} skipped)"
+            f"\"{r.name}\" by {r.artist} ({r.skip_rate:.0%} skipped)"
             for r in df.head(3).itertuples()
         ],
     }
@@ -454,7 +454,7 @@ def _card_decade_histogram(df: pd.DataFrame) -> dict[str, Any] | None:
         "sublabel": f"{len(by_decade)} decades represented",
         "coverage": _tier_b_coverage(df, dated),
         "evidence": [
-            f"{int(r.decade)}s — {r.share:.0%} ({int(r.play_count):,} plays)"
+            f"{int(r.decade)}s: {r.share:.0%} ({int(r.play_count):,} plays)"
             for r in ranked.head(3).itertuples()
         ],
     }
@@ -591,7 +591,7 @@ def _card_hidden_gems(fly: dict[str, Any]) -> dict[str, Any] | None:
         ),
         "coverage": _tier_a_coverage(fly["tracks"]),
         "evidence": [
-            f"\"{r.name}\" — {r.artist} (#{int(r.score_rank):,}, {names.get(r.cluster, 'unclustered')})"
+            f"\"{r.name}\" by {r.artist} (#{int(r.score_rank):,}, {names.get(r.cluster, 'unclustered')})"
             for r in gems.head(3).itertuples()
         ],
     }
@@ -903,7 +903,7 @@ def _coverage_note(card: dict[str, Any]) -> str | None:
 def render_markdown(report: dict[str, Any]) -> str:
     """Stage 8, chat renderer: the report object as a short markdown story."""
     if not report["cards"]:
-        return "_No cards could be computed — is the warehouse built and populated?_"
+        return "_No cards could be computed. Is the warehouse built and populated?_"
 
     lines = [
         f"# Your Selector Rewind ({report['window']['from']} → {report['window']['to']})",

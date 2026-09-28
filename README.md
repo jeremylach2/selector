@@ -44,7 +44,7 @@ flowchart LR
 
 The public demo ports layers 3 and 4 to TypeScript and runs them client-side over 2.5 MB of static assets, so there is no inference backend. It retrains the mushroom body on each visitor's own plays. It serves no audio, only derived numbers. `web/`
 
-I hope I haven't lost you in layer 3, and in all honesty I had no clue what any of that meant a few weeks ago.. I'm not a biologist. Stripped of the neuron talk, it's this: **the fly takes an input vector (a song's tempo, danceability, mood tags, ...) and maps it to a sparse output vector, and songs whose output vectors land close together sound alike.** It's a way to turn a song into a fingerprint, using a real biological mechanism. That's exactly what any locality-sensitive hash does. The part that isn't generic is *how* the mapping is wired: it's not learned and it's not a random matrix, it's the fly's actual projection-neuron-to-Kenyon-cell connectivity, pulled from a real connectome. No training is needed to get a useful hash out of it, only to get *taste* out of it, and that's what the plasticity rule on top, trained on skips and replays, is for.
+I hope I haven't lost you in layer 3, and in all honesty I had no clue what any of that meant a few weeks ago. I'm not a biologist. Stripped of the neuron talk, it's this: **the fly takes an input vector (a song's tempo, danceability, mood tags, ...) and maps it to a sparse output vector, and songs whose output vectors land close together sound alike.** It's a way to turn a song into a fingerprint, using a real biological mechanism. That's exactly what any locality-sensitive hash does. The part that isn't generic is *how* the mapping is wired: it's not learned and it's not a random matrix, it's the fly's actual projection-neuron-to-Kenyon-cell connectivity, pulled from a real connectome. No training is needed to get a useful hash out of it, only to get *taste* out of it, and that's what the plasticity rule on top, trained on skips and replays, is for.
 
 ## Results
 
@@ -53,7 +53,7 @@ I hope I haven't lost you in layer 3, and in all honesty I had no clue what any 
 | Vibe tagger eval, three arms | Lyrics + audio + metadata beats lyrics + metadata by 22% on intensity error (0.094 → 0.073) and 9% on valence. Audio alone barely beats the floor on valence. The untuned model scores below a train-mean baseline everywhere, so fine-tuning is what makes it work. | [docs/EVAL.md](docs/EVAL.md) |
 | Audio match rate | 86.4% of the full 19,386-track library, 90.6% of an early 500-track long-tail sample, reject-over-guess at a 0.72 threshold. | [docs/AUDIO_MATCHING.md](docs/AUDIO_MATCHING.md) |
 | Fly vs classical LSH | On MNIST at 4 bits, FlyHash reaches 0.086 mAP against 0.017 for random-projection LSH, reproducing the paper. The real FlyWire wiring ties the idealised circuit at 4 bits but falls behind it from 8 bits on, and behind classical LSH by 64. | [docs/FLYWIRE.md](docs/FLYWIRE.md) |
-| Skip prediction, mushroom body | Trained on 2022–24, tested on 2025–26. On tracks never heard before, the fly scores 0.562 to 0.571 ROC-AUC against 0.509 for per-track history. Modest, reported as measured; text-only features edge out audio + text, though expanding audio coverage from 16.5% to 86% narrowed that gap from 0.038 to 0.009. | [docs/MBON_EVAL.md](docs/MBON_EVAL.md) |
+| Skip prediction, mushroom body | Trained on 2022–24, tested on 2025–26. On tracks never heard before, the fly scores 0.562 to 0.571 ROC-AUC against 0.509 for per-track history. Modest, reported as measured. Text-only features edge out audio + text, though expanding audio coverage from 16.5% to 86% narrowed that gap from 0.038 to 0.009. | [docs/MBON_EVAL.md](docs/MBON_EVAL.md) |
 
 **[Watch the fly DJ visualiser →](https://selector-demo.vercel.app/watch)** Every dot on that page is computed in your browser from the real projection, the real fingerprints and a mushroom body trained in the tab. Press *skip it* and the plasticity rule runs live. The synapses from that track's active Kenyon cells visibly weaken, and the same query picks a different song.
 
@@ -86,13 +86,13 @@ claude mcp add selector -- uv --directory "$PWD" run selector-mcp
 
 Then ask Claude Code something like *"what did I binge in March and then abandon?"* [docs/INSTALL_MCP.md](docs/INSTALL_MCP.md) covers Claude Desktop and the tool list. [docs/DEPLOY_MCP.md](docs/DEPLOY_MCP.md) covers the hosted HTTP variant. The warehouse tools need only the export. The live Spotify tools need a dev app ([docs/OAUTH_NOTES.md](docs/OAUTH_NOTES.md)). The fly and DJ tools need the tagger outputs, which take the full audio, labelling and fine-tuning pipeline to rebuild. The docs for each step give the exact commands.
 
-**Tests:** `uv run pytest` (182 tests, no personal data needed) and `uv run ruff check .`. CI runs both, plus a guard (`scripts/check_personal_data.py`) that fails the build if an export file, audio, a token or an `ip_addr` value is ever committed.
+**Tests:** `uv run pytest` (323 tests, no personal data needed) and `uv run ruff check .`. CI runs both, plus a guard (`scripts/check_personal_data.py`) that fails the build if an export file, audio, a token or an `ip_addr` value is ever committed.
 
 ## Motivations and AI usage throughout this project
 
-In September 2026 there was a burst of "fly brain doing X" videos on YouTube, among them [*I Put a Fly's Conscious Brain into Minecraft*](https://youtu.be/BUkLWjcoBc0) and [*I Uploaded A Fruit Fly Brain To Reply To My Emails*](https://youtu.be/GmCbzlb091A). Sadly, the claims of these videos are largely sensational, so take the framing of those titles with some skepticism. What's public is a connectome, not a trained agent, and neither video's claim is something this project relies on or endorses. What they did give me was the idea.. the FlyWire connectome is real, public, and citable, and the actual, defensible result in the 2017 *Science* paper (olfactory circuit as locality-sensitive hash) was sitting right there, unused for anything like this.
+In September 2026 there was a burst of "fly brain doing X" videos on YouTube, among them [*I Put a Fly's Conscious Brain into Minecraft*](https://youtu.be/BUkLWjcoBc0) and [*I Uploaded A Fruit Fly Brain To Reply To My Emails*](https://youtu.be/GmCbzlb091A). Sadly, the claims of these videos are largely sensational, so take the framing of those titles with some skepticism. What's public is a connectome, not a trained agent, and neither video's claim is something this project relies on or endorses. What they did give me was the idea. The FlyWire connectome is real, public, and citable, and the actual, defensible result in the 2017 *Science* paper (olfactory circuit as locality-sensitive hash) was sitting right there, unused for anything like this.
 
-Before AI, building on that idea would have meant committing to a 6-12 month project I wouldn't have had the time for. AI condensed that to the few weekends of agent time laid out in the [Project Plan](Selector%20%E2%80%94%20Project%20Plan.md).
+Before AI, building on that idea would have meant committing to a 6-12 month project I wouldn't have had the time for. AI condensed that to the few weekends of agent time, scoped up front in a written project plan.
 
 This project was built with Claude Code doing most of the typing, on my own direction. I set the architecture (the four-layer split, the measured-vs-predicted schema, using the FlyWire connectome instead of a random projection), reviewed every component, and made the calls on what to keep, cut, or redo. The reverted lyrics-status feature above is one of several dead ends caught that way. Claude Sonnet 5 also generated the 3,492 distillation labels the vibe tagger's LoRA fine-tune trains on, which makes it part of the ML pipeline itself, not just the tooling around it.
 
@@ -102,14 +102,14 @@ None of this would have shipped solo in the time it took. I'd worked with recomm
 
 I'm a software engineer by day and have experimented with AI-assisted coding a lot. The AI workflow that I employed for a project this size:
 
-1. Write the [Project Plan](Selector%20%E2%80%94%20Project%20Plan.md) myself, in my own words, then go back and forth with an Opus class model until it held up: right scope, real risks named, no overclaiming.
-2. Once the plan was solid, have that model turn it into [`PROMPT-PACK.md`](PROMPT-PACK.md): one concrete, scoped prompt per session.
+1. Write a project plan myself, in my own words, then go back and forth with an Opus class model until it held up: right scope, real risks named, no overclaiming.
+2. Once the plan was solid, have that model turn it into a prompt pack: one concrete, scoped prompt per session.
 3. With that much planning and context already on paper, a faster, cheaper model could do most of the actual coding. Each session started the same way: "Read the project plan and prompt N from the prompt pack, and complete it."
 4. Review every diff and doc by hand before moving on.
 
-The expensive model's job was judgment.. scoping, sequencing, catching risks before they became architecture. The cheap model's job was execution against a spec that judgment had already produced. Skipping steps 1 and 2 and just prompting a cheap model session by session is how these projects sprawl.
+The expensive model's job was judgment: scoping, sequencing, catching risks before they became architecture. The cheap model's job was execution against a spec that judgment had already produced. Skipping steps 1 and 2 and just prompting a cheap model session by session is how these projects sprawl.
 
-A biologist's connectome, a paper from 2017, and a few weekends of evenings were all it took to turn "someone else's neuroscience" into a working piece of my own software, that gap is the smallest it has ever been, and it is only getting smaller. It's a builder and dreamers world now.. if you've had an idea sitting on a shelf because you figured you didn't have the years for it, that's worth a second look.
+A biologist's connectome, a paper from 2017, and a few weekends of evenings were all it took to turn "someone else's neuroscience" into a working piece of my own software. That gap is the smallest it has ever been, and it is only getting smaller. It's a builder's world now. If you've had an idea sitting on a shelf because you figured you didn't have the years for it, that's worth a second look.
 
 ## Citations and attribution
 

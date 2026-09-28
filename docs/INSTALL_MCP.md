@@ -22,11 +22,11 @@ to run the two commands above, instead of a stack trace.
 From the repo root:
 
 ```
-claude mcp add selector --scope project -- uv --directory "D:/codeprojects/spotifyProject" run selector-mcp
+claude mcp add selector --scope project -- uv --directory "$PWD" run selector-mcp
 ```
 
-This writes `.mcp.json` at the repo root (already committed, so anyone who
-clones the repo gets the same entry). Project-scoped servers from
+This writes `.mcp.json` at the repo root. It holds an absolute path to your
+clone, so it's gitignored. Project-scoped servers from
 `.mcp.json` need a one-time approval, run `claude` in the repo and approve
 `selector` when prompted (`claude mcp list` shows it as "⏸ Pending approval"
 until then). After approval, ask something like "what did I binge in March

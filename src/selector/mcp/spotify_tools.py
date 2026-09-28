@@ -74,7 +74,7 @@ def _client_id() -> str:
     if not client_id:
         raise SpotifyNotConfigured(
             "SPOTIFY_CLIENT_ID is not set. Register a Spotify developer app "
-            "and add it to `.env` — see `docs/OAUTH_NOTES.md` for the exact "
+            "and add it to `.env`. See `docs/OAUTH_NOTES.md` for the exact "
             "steps and the redirect URI to register."
         )
     return client_id
