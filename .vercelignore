@@ -12,12 +12,18 @@
 # `uv sync` against it over `pip install -r requirements.txt`, and its
 # dependency list is the full local dev set (librosa, torch, ...), which
 # blew the 500MB bundle limit on the first deploy.
+#
+# .git is let through because Vercel applies this file to Git deployments
+# too, and vercel.json's ignoreCommand needs the history to `git diff` the
+# pushed commit. Without it, every push to main built regardless of what
+# changed. The history is the public repo's, so nothing private rides along.
 
 /*
 !/api
 !/src
 !/requirements.txt
 !/vercel.json
+!/.git
 
 __pycache__/
 *.pyc

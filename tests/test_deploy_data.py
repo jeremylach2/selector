@@ -94,6 +94,9 @@ def test_git_deploys_watch_everything_the_deployment_ships():
         for line in (REPO / ".vercelignore").read_text(encoding="utf-8").splitlines()
         if line.startswith("!/")
     ]
+    # .git ships only so the ignoreCommand can diff; it isn't code.
+    assert ".git" in shipped
+    shipped.remove(".git")
     command = json.loads((REPO / "vercel.json").read_text(encoding="utf-8"))["ignoreCommand"]
     watched = command.split(" -- ", 1)[1].split()
     assert shipped and set(shipped) <= set(watched), (shipped, watched)
