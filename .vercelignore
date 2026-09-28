@@ -1,47 +1,23 @@
-# .gitignore keeps personal data out of git; this file governs what the
-# Vercel CLI actually uploads on `vercel deploy`, which is a separate
-# concern — the MCP deployment needs data/selector.duckdb (14MB, the
-# warehouse the tools query) even though it must never be committed.
-# Everything else large or irrelevant to the deployed function stays out.
+# What reaches the MCP function's deployment, as an allowlist: ignore
+# everything, then let through only what `api/index.py` needs. `.gitignore`
+# keeps personal data out of git; this is the separate question of what
+# reaches Vercel on a CLI deploy, and a blocklist here kept missing things
+# (web/.env.local, data/wrapped_private/, data/wrapped_report.json).
+#
+# No data ships at all. The function downloads the coarse deploy warehouse
+# from a private Blob store on cold start (selector.mcp.deploy_data), so a
+# Git deploy and a CLI deploy produce the same thing. See docs/DEPLOY_MCP.md.
+#
+# pyproject.toml stays out on purpose: Vercel's Python builder prefers
+# `uv sync` against it over `pip install -r requirements.txt`, and its
+# dependency list is the full local dev set (librosa, torch, ...), which
+# blew the 500MB bundle limit on the first deploy.
 
-.venv/
-.git/
+/*
+!/api
+!/src
+!/requirements.txt
+!/vercel.json
+
 __pycache__/
 *.pyc
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-node_modules/
-
-.env
-my_spotify_data.zip
-
-data/raw/
-data/audio/
-data/flywire/
-data/essentia_models/
-data/lyrics/
-data/runs/
-data/dj_runs/
-data/splits/
-data/*.parquet
-data/labels.jsonl
-data/labels_gold.jsonl
-data/.audio_resolve_checkpoint.jsonl
-
-notebooks/
-tests/
-scripts/
-docs/
-image.png
-uv.lock
-PROMPT-PACK.md
-Selector — Project Plan.md
-
-# Vercel's Python builder prefers `uv sync` against pyproject.toml over
-# `pip install -r requirements.txt` when it finds this file — and
-# pyproject.toml's dependency list is the full local dev set (librosa,
-# torch, scikit-learn, matplotlib, ...), which blew the 500MB bundle limit
-# (859MB) on the first deploy attempt. Excluding it forces the builder onto
-# requirements.txt, which lists only what api/index.py actually imports.
-pyproject.toml

@@ -72,8 +72,26 @@ intended.
 
 `src/selector/mcp/http_server.py` requires `SELECTOR_MCP_TOKEN`. With it
 unset, every request gets 503. Local testing without a token needs the
-explicit `SELECTOR_MCP_ALLOW_NO_AUTH=1`, which is never set on Vercel. See
-[DEPLOY_MCP.md](DEPLOY_MCP.md).
+explicit `SELECTOR_MCP_ALLOW_NO_AUTH=1`, which is never set on Vercel.
+
+- **Data:** it ships `data/selector_deploy.duckdb`
+  (`python -m selector.warehouse.build --deploy`), not the full warehouse.
+  Plays are reduced to counts per UTC day, hour and track. There are no
+  exact timestamps, sessions, platforms, countries or reason codes, and the
+  build refuses to write a file with any time column left.
+- **Tools:** only the nine read-only warehouse tools. The live Spotify,
+  fly-brain, DJ and Rewind tools are local-only.
+- **Where it lives:** in a private Blob store connected only to the MCP
+  project, downloaded into `/tmp` on cold start. It's never in git or a
+  deployment. `.vercelignore` is an allowlist (`api/`, `src/`,
+  `requirements.txt`, `vercel.json`), so env files, private reports and
+  `data/` never reach Vercel. The upload refuses any file with per-play
+  tables or time columns.
+- **Token rotation:** `scripts/rotate_mcp_token.py` sets the new value
+  without ever printing it.
+
+The hour buckets still show roughly what was played when. The token is the
+only thing keeping that private. See [DEPLOY_MCP.md](DEPLOY_MCP.md).
 
 ## Guardrails
 
@@ -97,3 +115,47 @@ not-affiliated disclaimer.
 Selector is non-commercial and not affiliated with or endorsed by Spotify.
 The public site uses no Spotify logo, wordmark or brand colour, plays no
 audio, and ships only derived numbers.
+
+## Training boundary
+
+Spotify's [Developer Policy](https://developer.spotify.com/policy) says not
+to use the Spotify Platform or Spotify Content to train a machine-learning
+model. Nothing here trains on Web API responses. This was checked by
+tracing every input, not assumed (audit of 2026-09-27):
+
+| Model or learned artifact | Trained or built from |
+| --- | --- |
+| Measured audio features (`selector.audio`) | 30-second preview clips matched on the iTunes Search and Deezer public APIs, by track and artist name |
+| Teacher labels (`selector.tagger.label`) | Track, artist and album names from the warehouse, lrclib lyrics, and the measured features. The schema's `artist_genres` and `release_year` fields are never filled (0 of 3,512 label records). |
+| Vibe tagger fine-tune (`selector.tagger.train`) | Those teacher labels |
+| Fly fingerprints (`selector.fly.pipeline`) | Tagger outputs, measured features and the FlyWire connectome (Zenodo, GitHub) |
+| Mushroom body (`selector.fly.mbon`) | Play and skip verdicts from `data/plays.parquet` |
+| Taste clusters and names (`selector.fly.clusters`, `cluster_names`) | The fingerprints, plus most-played track names from the warehouse |
+
+The warehouse and `data/plays.parquet` come only from the GDPR data export
+(`selector.ingest.load_history`), which Spotify gives the account holder as
+their own personal data. It is not fetched from the Web API.
+
+`tests/test_ml_boundary.py` enforces the code side. It walks the import
+graph of `selector.tagger`, `selector.fly`, `selector.audio` and
+`selector.ingest`, including imports made inside functions, and fails if
+any of them can reach `selector.spotify`.
+
+**Inference is the gray area.** The local-only `spotify_*` MCP tools hand
+live Web API results to Claude in a conversation. The DJ agent may read the
+live recently-played list to pick a theme, which is deterministic scoring,
+not a model, and nothing it reads is stored as training data. None of this
+runs on the hosted MCP server.
+
+This is a risk reading, not legal advice.
+
+## Preview clips
+
+The 30-second clips in `data/audio/` exist only to measure features. They
+are gitignored, blocked by the guard's audio-suffix rule, excluded from the
+Vercel upload, and never played on the site. Apple's and Deezer's preview
+terms are written for in-app playback, not bulk download, so the plan is to
+delete them. That waits until the deferred authenticity features
+(acoustic-vs-electronic, timing looseness) have been extracted, because
+that needs the clips. After that, the measured features in parquet are all
+the project needs.

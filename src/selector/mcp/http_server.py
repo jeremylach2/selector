@@ -1,10 +1,17 @@
 """ASGI entrypoint for running the Selector MCP server over Streamable HTTP.
 
 `server.py` defines every tool and stays stdio-only for local Claude Code /
-Desktop use per `docs/INSTALL_MCP.md`. This module reuses that same `server`
-object (so tool definitions never drift between the two transports) and
-exposes it as a plain ASGI `app`, suitable for a Vercel Python function or
-any other ASGI host. See `docs/DEPLOY_MCP.md`.
+Desktop use per `docs/INSTALL_MCP.md`. This module registers a subset of
+those same functions (so tool definitions never drift between the two
+transports) on a second server, `deploy_server`, and exposes it as a plain
+ASGI `app`, suitable for a Vercel Python function or any other ASGI host.
+See `docs/DEPLOY_MCP.md`.
+
+Only the read-only warehouse tools in `DEPLOY_TOOLS` are served. The live
+Spotify tools need a local OAuth flow and could write to the account, the
+fly-brain and DJ tools need files the deployment doesn't ship (and the
+mushroom body trains on per-play history), and `wrapped_report` writes to
+disk.
 
 Two deliberate choices, both driven by this being a single-user deployment:
 
@@ -22,11 +29,28 @@ from __future__ import annotations
 import hmac
 import os
 
+from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from selector.mcp.server import server
+from selector.mcp import server as stdio
+
+DEPLOY_TOOLS = (
+    stdio.warehouse_summary,
+    stdio.search_library,
+    stdio.track_detail,
+    stdio.top_artists,
+    stdio.binged_then_abandoned,
+    stdio.skip_offenders,
+    stdio.listening_clock,
+    stdio.taste_drift,
+    stdio.rediscovery_candidates,
+)
+
+deploy_server = MCPServer(name=stdio.server.name, instructions=stdio.server.instructions)
+for _tool in DEPLOY_TOOLS:
+    deploy_server.add_tool(_tool)
 
 TOKEN_ENV_VAR = "SELECTOR_MCP_TOKEN"
 # Local `uvicorn` testing only. Never set on Vercel: without it, a missing
@@ -78,5 +102,5 @@ class BearerAuthMiddleware:
 _transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 
 app = BearerAuthMiddleware(
-    server.streamable_http_app(stateless_http=True, transport_security=_transport_security)
+    deploy_server.streamable_http_app(stateless_http=True, transport_security=_transport_security)
 )

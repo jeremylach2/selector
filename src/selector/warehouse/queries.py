@@ -36,6 +36,31 @@ def _connect(db_path: Path) -> duckdb.DuckDBPyConnection:
     return duckdb.connect(str(db_path), read_only=True)
 
 
+def _play_rows(con: duckdb.DuckDBPyConnection) -> str:
+    """The play-level source for the queries below, as a subquery with
+    columns `(t, hour_utc, dow, artist, track_id, play_count, ms_played)`.
+
+    On a full warehouse that's one row per play (`t` is the exact
+    timestamp). The deploy warehouse (`build.build_deploy_warehouse`) has no
+    `plays` table, only `plays_hourly` counts, so there `t` is the UTC day
+    and each row stands for `play_count` plays. Summing `play_count` gives
+    the same totals from either.
+    """
+    has_plays = con.execute(
+        "SELECT 1 FROM information_schema.tables WHERE table_name = 'plays'"
+    ).fetchone()
+    if has_plays:
+        return """(
+            SELECT ts AS t, hour_utc, dow, artist_name AS artist, track_id,
+                1 AS play_count, ms_played
+            FROM plays
+        )"""
+    return """(
+        SELECT date AS t, hour_utc, dow, artist, track_id, play_count, ms_played
+        FROM plays_hourly
+    )"""
+
+
 def top_artists(
     start: str | None = None,
     end: str | None = None,
@@ -45,18 +70,19 @@ def top_artists(
     """Which artists got the most plays in a given date range?
 
     `start`/`end` are ISO date strings (inclusive/exclusive); either may be
-    None for an open-ended range.
+    None for an open-ended range. On the deploy warehouse the range works at
+    day granularity.
     """
     with _connect(db_path) as con:
         return con.execute(
-            """
+            f"""
             SELECT
-                artist_name AS artist,
-                COUNT(*) AS play_count,
+                artist,
+                SUM(play_count)::BIGINT AS play_count,
                 SUM(ms_played) / 3600000.0 AS total_hours
-            FROM plays
-            WHERE (? IS NULL OR ts >= ?) AND (? IS NULL OR ts < ?)
-            GROUP BY artist_name
+            FROM {_play_rows(con)}
+            WHERE (? IS NULL OR t >= ?) AND (? IS NULL OR t < ?)
+            GROUP BY artist
             ORDER BY play_count DESC
             LIMIT ?
             """,
@@ -227,9 +253,9 @@ def listening_clock(db_path: Path = DEFAULT_DB_PATH) -> pd.DataFrame:
     """When during the week does listening actually happen, by hour of day and day of week?"""
     with _connect(db_path) as con:
         return con.execute(
-            """
-            SELECT hour_utc, dow, COUNT(*) AS play_count
-            FROM plays
+            f"""
+            SELECT hour_utc, dow, SUM(play_count)::BIGINT AS play_count
+            FROM {_play_rows(con)}
             GROUP BY hour_utc, dow
             ORDER BY dow, hour_utc
             """
@@ -260,11 +286,11 @@ def taste_drift(
             f"""
             WITH per_period AS (
                 SELECT
-                    date_trunc('{granularity}', ts) AS period,
-                    artist_name AS artist,
-                    COUNT(*) AS play_count
-                FROM plays
-                GROUP BY date_trunc('{granularity}', ts), artist_name
+                    date_trunc('{granularity}', t) AS period,
+                    artist,
+                    SUM(play_count)::BIGINT AS play_count
+                FROM {_play_rows(con)}
+                GROUP BY date_trunc('{granularity}', t), artist
             ),
             ranked AS (
                 SELECT *, ROW_NUMBER() OVER (
@@ -365,18 +391,20 @@ def tracks_by_ids(
 
 
 def warehouse_summary(db_path: Path = DEFAULT_DB_PATH) -> pd.DataFrame:
-    """Date range, total plays, unique tracks/artists, and total hours listened."""
+    """Date range, total plays, unique tracks/artists, and total hours listened.
+
+    On the deploy warehouse the range is whole UTC days, not exact times."""
     with _connect(db_path) as con:
         return con.execute(
-            """
+            f"""
             SELECT
-                MIN(ts) AS earliest_play,
-                MAX(ts) AS latest_play,
-                COUNT(*) AS total_plays,
+                MIN(t) AS earliest_play,
+                MAX(t) AS latest_play,
+                SUM(play_count)::BIGINT AS total_plays,
                 COUNT(DISTINCT track_id) AS unique_tracks,
-                COUNT(DISTINCT artist_name) AS unique_artists,
+                COUNT(DISTINCT artist) AS unique_artists,
                 SUM(ms_played) / 3600000.0 AS total_hours
-            FROM plays
+            FROM {_play_rows(con)}
             """
         ).df()
 
