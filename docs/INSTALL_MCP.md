@@ -95,7 +95,12 @@ query plus `warehouse_summary` as an orientation call: `warehouse_summary`,
 `reconcile_library`. All but `reconcile_library` are also on the hosted
 server, with its own Spotify login (see `docs/DEPLOY_MCP.md`). After a
 deploy that changes the hosted tool list, reconnect the claude.ai connector
-so it picks up the new list.
+so it picks up the new list. The hosted server logs in with OAuth through
+Spotify: add it as a custom connector with just the URL
+(`https://selector-mcp.vercel.app/mcp`), no token, and claude.ai walks
+through the login. In Claude Code, `claude mcp add --transport http
+selector-remote https://selector-mcp.vercel.app/mcp`, then `/mcp` to log
+in.
 
 **Fly brain tools** (read `data/fly_tags.npz`, built by Step 12's
 `uv run python -m selector.fly.pipeline`): `more_like_this(track, k)` —

@@ -57,7 +57,7 @@ are now whole days.
 
 It is still personal: the hour buckets barely merge anything (about 41k rows
 for 44k plays), so it says roughly what was played in which hour. The
-bearer token is what keeps it private.
+OAuth login (see [Auth](#auth)) is what keeps it private.
 
 ## Why Redis
 
@@ -69,7 +69,8 @@ The Spotify tools do need state that outlives an instance and can be
 written: the Spotify token, which refreshes every hour and can come back
 with a new refresh token. That lives in Upstash Redis (Vercel
 Marketplace), connected only to this project, along with a refresh lock,
-the daily playlist counter and the playlist audit log. Redis rather than
+the daily playlist counter, the playlist audit log and the OAuth state
+(clients, codes and tokens). Redis rather than
 the existing Blob store because it has atomic `SET NX` and `INCR`.
 
 ## What was added
@@ -93,8 +94,11 @@ the existing Blob store because it has atomic `SET NX` and `INCR`.
 - `src/selector/mcp/http_server.py` — registers those tools (and never
   imports `server.py`) on its own `deploy_server`,
   exposes it as an ASGI `app` via
-  `deploy_server.streamable_http_app(stateless_http=True)`, and wraps it in
-  a bearer-token auth check.
+  `deploy_server.streamable_http_app(stateless_http=True)`, with the SDK's
+  OAuth routes and token check wired to `oauth.py`.
+- `src/selector/mcp/oauth.py` — the OAuth provider: client registration,
+  the Spotify login leg and its callback, and the MCP codes and tokens in
+  Redis. See [Auth](#auth).
 - `api/index.py` — the Vercel Python function entrypoint; puts `src/` on
   `sys.path`, downloads the deploy warehouse to `/tmp` on cold start,
   points `SELECTOR_DB` at it, and re-exports that `app`. If the download
@@ -123,25 +127,63 @@ the existing Blob store because it has atomic `SET NX` and `INCR`.
 
 ## Auth
 
-There's no per-user auth system here, just a single shared secret. Set
-`SELECTOR_MCP_TOKEN` as a Vercel environment variable. Every request must
-send `Authorization: Bearer <that value>` (compared in constant time), or the
-middleware in `http_server.py` returns 401 before the request reaches the MCP
-session manager.
+MCP OAuth, with Spotify as the login (`src/selector/mcp/oauth.py`, on top
+of the SDK's `mcp.server.auth` handlers). The server is its own
+authorization server, and the only account that can get a token is the
+owner's Spotify account, `SELECTOR_OWNER_SPOTIFY_ID`.
 
-The middleware fails closed. If `SELECTOR_MCP_TOKEN` is unset, every request
-gets 503 ("Server not configured"), so a deploy that forgot the variable
-serves nothing. For local testing without a token, set the explicit opt-out
+1. A request to `/mcp` without a token gets a 401 whose
+   `WWW-Authenticate` header points at
+   `/.well-known/oauth-protected-resource/mcp`, which names this server as
+   its authorization server (`/.well-known/oauth-authorization-server`).
+2. The client registers itself (`/register`) and sends the browser to
+   `/authorize` with PKCE.
+3. The server parks that request in Redis and redirects to Spotify with
+   the hosted scopes. That leg is PKCE too, so there's still no Spotify
+   client secret anywhere.
+4. Spotify comes back to `/oauth/spotify/callback`. The server exchanges
+   the code, calls `GET /me`, and refuses unless it's the owner. Someone
+   else's Spotify token is dropped, never stored. The owner's replaces the
+   hosted Spotify token, so logging in also repairs a dead one.
+5. The client gets an authorization code (single use, 5 minutes) and
+   swaps it at `/token` for an access token (1 hour) and a refresh token
+   (30 days, rotated on every use). `/revoke` revokes both.
+
+Clients, pending logins, codes and tokens live in the same Redis as the
+Spotify token, under `mcp:*` keys with TTLs. Keys are SHA-256 hashes of
+the tokens and every value is Fernet-encrypted, so Redis holds no usable
+token.
+
+Two guards, since `/register` is open to anyone:
+
+- **Redirect URI allowlist.** A client can only register claude.ai's
+  callback (`https://claude.ai/api/mcp/auth_callback`, and the
+  `claude.com` one) or a loopback `http://localhost`/`127.0.0.1` URI
+  (Claude Code, MCP Inspector). Add exact URIs with
+  `SELECTOR_OAUTH_REDIRECT_URIS` (space-separated). Without this, anyone
+  could register their own redirect URI and send the owner a login link:
+  Spotify skips its consent page for an app already approved, so one
+  click would hand them a token.
+- **20 registrations per UTC day**, so nobody can fill Redis through it.
+
+It fails closed. If Redis, `SELECTOR_TOKEN_KEY`,
+`SELECTOR_OWNER_SPOTIFY_ID`, `SPOTIFY_CLIENT_ID` or the public URL
+(`SELECTOR_MCP_PUBLIC_URL`, else Vercel's `VERCEL_PROJECT_PRODUCTION_URL`)
+is missing, every request gets 503 ("Server not configured"). For local
+testing without any of it, set the explicit opt-out
 `SELECTOR_MCP_ALLOW_NO_AUTH=1` (`uvicorn selector.mcp.http_server:app
 --reload` with `src/` on `PYTHONPATH`). Never set it on Vercel.
 
-Rotate the token with `uv run python scripts/rotate_mcp_token.py` from the
-repo root. It generates the new value and hands it to `vercel env add` on
-stdin, so it never appears on screen, in shell history or in a chat
-transcript. It saves the value to `~/.selector/mcp_token` and copies it to
-the clipboard. The running deployment keeps the old token until the next
-production deploy. After that, old clients get 401 until they're given the
-new value.
+**Logging everyone out:** `uv run python scripts/revoke_mcp_sessions.py`
+deletes every MCP token, code and pending login, immediately.
+`--clients` also drops the registered clients, `--spotify` the hosted
+Spotify token. Rotating `SELECTOR_TOKEN_KEY` makes everything in Redis
+unreadable at once, and forces a fresh login.
+
+**The old static bearer.** Until `SELECTOR_MCP_TOKEN` is removed, that
+value is accepted too (compared in constant time), so clients can move
+over one at a time. Once every client logs in with OAuth, run
+`vercel env rm SELECTOR_MCP_TOKEN production` and redeploy.
 
 The SDK's built-in DNS-rebinding protection is explicitly disabled
 (`enable_dns_rebinding_protection=False` in `http_server.py`) — it checks
@@ -149,13 +191,7 @@ the `Host` header against an allowlist meant for a server bound to
 `localhost`, and would reject every real request against a Vercel domain.
 That protection defends against a browser being tricked into hitting a
 *local* MCP server from a malicious page; it doesn't apply here, where the
-bearer token is the actual access control.
-
-Since the Spotify tools, the bearer token can also create playlists on the
-account, not just read listening stats, and it never expires. The daily
-cap and input checks bound what a leaked token can do. Rotate it if it has
-been anywhere it shouldn't. Replacing it with OAuth that logs in through
-Spotify is Phase 2 of `docs/REMOTE_SPOTIFY_PLAN.md`.
+OAuth tokens are the actual access control.
 
 ## Live Spotify tools
 
@@ -163,17 +199,18 @@ The hosted server has its own Spotify login, separate from the local
 `~/.selector/token.json`. A PKCE refresh can hand back a new refresh token,
 so if the two shared one, a refresh on either side could break the other.
 
-- **Seeding.** `scripts/seed_remote_spotify_token.py` runs the usual
-  browser login on this machine with narrower scopes (`REMOTE_SCOPES` in
-  `auth.py`: library, top items, recently played,
-  `playlist-modify-private`) and writes the result to Redis.
+- **Login.** Every OAuth login stores a fresh token set, with narrower
+  scopes (`REMOTE_SCOPES` in `auth.py`: library, top items, recently
+  played, `playlist-modify-private`). `scripts/seed_remote_spotify_token.py`
+  runs the same login on this machine and writes the result to Redis, as
+  a fallback.
 - **At rest.** The token set is encrypted with Fernet under
   `SELECTOR_TOKEN_KEY` (a sensitive Vercel env var), so the Redis data
   alone is useless. `scripts/setup_remote_spotify.py` generates the key and
   sets it without printing it.
 - **No browser, ever.** The hosted client runs with `interactive=False`: a
   missing token or a refresh token Spotify rejects is an error telling you
-  to re-seed.
+  to reconnect the client (or re-seed).
 - **Refreshes.** Held under a Redis lock (`SET NX PX`), and the token is
   reloaded once the lock is held, so concurrent requests on a reused
   instance refresh once.
@@ -219,7 +256,6 @@ One-time setup, from the repo root:
 vercel link                                   # links the MCP project
 vercel git connect                            # connects it to the GitHub repo
 vercel blob create-store selector-mcp-data --access private   # connect it to this project only
-uv run python scripts/rotate_mcp_token.py     # sets SELECTOR_MCP_TOKEN, never printed
 vercel env pull .env.local --environment=production   # brings BLOB_READ_WRITE_TOKEN (gitignored)
 ```
 
@@ -229,20 +265,27 @@ For the Spotify tools, also:
 vercel integration add upstash                # Redis; connect it to the MCP project only
 uv run python scripts/setup_remote_spotify.py # sets SELECTOR_TOKEN_KEY (never printed) and SPOTIFY_CLIENT_ID
 vercel env pull .env.local --environment=production   # brings the Redis URL and token
-uv run python scripts/seed_remote_spotify_token.py    # browser login; writes the encrypted token to Redis
+uv run python scripts/seed_remote_spotify_token.py    # browser login; writes the encrypted token and owner id to Redis
+uv run python scripts/setup_mcp_oauth.py      # sets SELECTOR_OWNER_SPOTIFY_ID and SELECTOR_MCP_PUBLIC_URL
 ```
+
+`setup_mcp_oauth.py` prints the callback URL
+(`https://selector-mcp.vercel.app/oauth/spotify/callback`) to add as a
+second redirect URI on the Spotify app, next to the loopback one.
 
 The Blob store is separate from the web project's, so neither project's
 token can read the other's private data. `vercel deploy --prod` still
 works for a one-off deploy and produces the same thing, since no data is
 bundled either way.
 
-Then point any Streamable-HTTP-capable MCP client at
-`https://<your-deployment>.vercel.app/mcp` with the header
-`Authorization: Bearer <token>`.
+Then point any MCP client that speaks Streamable HTTP and MCP OAuth at
+`https://selector-mcp.vercel.app/mcp`, with no token. It logs in through
+Spotify in the browser.
 
-`uv run python scripts/check_mcp_deploy.py` checks auth, the warehouse and
-a Spotify search through the hosted token. Add `--write` to also create a
+`uv run python scripts/check_mcp_deploy.py` checks the OAuth discovery
+endpoints, then calls the server with a five-minute access token it writes
+straight to Redis and deletes afterwards: the warehouse and a Spotify
+search through the hosted token. Add `--write` to also create a
 one-track playlist through the hosted server and delete it again.
 
 ## Keeping the warehouse current

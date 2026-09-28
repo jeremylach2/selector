@@ -123,7 +123,7 @@ def test_store_empty_loads_none(store):
 def test_wrong_key_fails_loudly(store):
     store.save(_token())
     other = RedisTokenStore(store.redis, Fernet.generate_key().decode("ascii"))
-    with pytest.raises(auth.SpotifyAuthError, match="Re-seed"):
+    with pytest.raises(auth.SpotifyAuthError, match="can't be decrypted"):
         other.load()
 
 
@@ -175,7 +175,7 @@ def test_dead_refresh_token_raises_instead_of_opening_a_browser(store, no_browse
         raise auth.SpotifyAuthError("Token refresh failed: 400 invalid_grant")
 
     monkeypatch.setattr(auth, "_refresh_token", _fail)
-    with pytest.raises(auth.SpotifyAuthError, match="Re-seed"):
+    with pytest.raises(auth.SpotifyAuthError, match="Reconnect the MCP client"):
         auth.get_valid_token("cid", store, interactive=False)
 
 

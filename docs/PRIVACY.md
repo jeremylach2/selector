@@ -71,9 +71,12 @@ intended.
 
 ## The hosted MCP server
 
-`src/selector/mcp/http_server.py` requires `SELECTOR_MCP_TOKEN`. With it
-unset, every request gets 503. Local testing without a token needs the
-explicit `SELECTOR_MCP_ALLOW_NO_AUTH=1`, which is never set on Vercel.
+`src/selector/mcp/http_server.py` requires an OAuth login through
+Spotify, and only the owner's Spotify account
+(`SELECTOR_OWNER_SPOTIFY_ID`) gets a token. If Redis, the token key or the
+owner id is missing, every request gets 503. Local testing without auth
+needs the explicit `SELECTOR_MCP_ALLOW_NO_AUTH=1`, which is never set on
+Vercel.
 
 - **Data:** it ships `data/selector_deploy.duckdb`
   (`python -m selector.warehouse.build --deploy`), not the full warehouse.
@@ -89,18 +92,26 @@ explicit `SELECTOR_MCP_ALLOW_NO_AUTH=1`, which is never set on Vercel.
   Redis encrypted under `SELECTOR_TOKEN_KEY`. Redis also holds the daily
   playlist counter and a log of playlists created (time, id, name, track
   count), never tracks or listening data.
+- **MCP sessions:** registered clients, pending logins, authorization
+  codes and MCP tokens, all in the same Redis with TTLs (5 minutes for a
+  code, 1 hour for an access token, 30 days for a refresh token). Tokens
+  are keyed by their SHA-256 hash and every value is encrypted, so Redis
+  holds no usable token. `scripts/revoke_mcp_sessions.py` logs every
+  client out.
 - **Where it lives:** in a private Blob store connected only to the MCP
   project, downloaded into `/tmp` on cold start. It's never in git or a
   deployment. `.vercelignore` is an allowlist (`api/`, `src/`,
   `requirements.txt`, `vercel.json`), so env files, private reports and
   `data/` never reach Vercel. The upload refuses any file with per-play
   tables or time columns.
-- **Token rotation:** `scripts/rotate_mcp_token.py` sets the new value
-  without ever printing it.
+- **Static bearer (being retired):** while `SELECTOR_MCP_TOKEN` is still
+  set, it's accepted alongside OAuth tokens so clients can move over.
+  `scripts/rotate_mcp_token.py` sets it without ever printing it.
 
-The hour buckets still show roughly what was played when, and the token can
-also create playlists on the account (at most 20 a day). The token is the
-only thing keeping both private. See [DEPLOY_MCP.md](DEPLOY_MCP.md).
+The hour buckets still show roughly what was played when, and a token can
+also create playlists on the account (at most 20 a day). The Spotify login
+and the short-lived tokens it yields are what keep both private. See
+[DEPLOY_MCP.md](DEPLOY_MCP.md).
 
 ## Guardrails
 

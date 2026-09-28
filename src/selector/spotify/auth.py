@@ -15,8 +15,8 @@ Where the token lives is a `TokenStore`. Locally that's `FileTokenStore`
 (the JSON file above). The hosted MCP server uses
 `selector.spotify.remote_store.RedisTokenStore` with `interactive=False`,
 since a serverless function has no browser and no loopback port: there,
-a missing or dead token is an error telling you to re-seed, never a
-browser flow.
+a missing or dead token is an error telling you to log in again through
+the MCP client, never a browser flow.
 """
 
 from __future__ import annotations
@@ -65,6 +65,14 @@ DEFAULT_TOKEN_PATH = Path.home() / ".selector" / "token.json"
 # Refresh this many seconds before actual expiry, so a token doesn't die
 # mid-request due to clock skew or request latency.
 EXPIRY_SAFETY_MARGIN_SECONDS = 60
+
+
+# What a non-interactive caller (the hosted server) should do about a
+# missing or dead token.
+RELOGIN_HINT = (
+    "Reconnect the MCP client to log in through Spotify again, or re-seed the token: "
+    "uv run python scripts/seed_remote_spotify_token.py"
+)
 
 
 class SpotifyAuthError(RuntimeError):
@@ -157,13 +165,21 @@ def _run_authorize_flow(client_id: str, scopes: str = SCOPES) -> dict[str, str]:
     return {"code": result["code"], "verifier": verifier}
 
 
-def _exchange_code_for_token(client_id: str, code: str, verifier: str) -> TokenSet:
+def _exchange_code_for_token(
+    client_id: str,
+    code: str,
+    verifier: str,
+    redirect_uri: str = REDIRECT_URI,
+    scopes: str = SCOPES,
+) -> TokenSet:
+    """`redirect_uri` must be the one the authorize request used: the
+    loopback one here, the hosted callback for the MCP OAuth login."""
     response = httpx.post(
         TOKEN_URL,
         data={
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": REDIRECT_URI,
+            "redirect_uri": redirect_uri,
             "client_id": client_id,
             "code_verifier": verifier,
         },
@@ -175,7 +191,7 @@ def _exchange_code_for_token(client_id: str, code: str, verifier: str) -> TokenS
         access_token=payload["access_token"],
         refresh_token=payload["refresh_token"],
         expires_at=time.time() + payload["expires_in"],
-        scope=payload.get("scope", SCOPES),
+        scope=payload.get("scope", scopes),
     )
 
 
@@ -279,14 +295,12 @@ def get_valid_token(
             except SpotifyAuthError as exc:
                 if not interactive:
                     raise SpotifyAuthError(
-                        f"{exc}. Re-seed the token: uv run python scripts/seed_remote_spotify_token.py"
+                        f"{exc}. {RELOGIN_HINT}"
                     ) from exc
                 # refresh token itself expired/revoked: fall through to a full re-auth
 
     if not interactive:
-        raise SpotifyAuthError(
-            "No Spotify token is stored. Seed one: uv run python scripts/seed_remote_spotify_token.py"
-        )
+        raise SpotifyAuthError(f"No Spotify token is stored. {RELOGIN_HINT}")
 
     auth_result = _run_authorize_flow(client_id)
     token = _exchange_code_for_token(client_id, auth_result["code"], auth_result["verifier"])

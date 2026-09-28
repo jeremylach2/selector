@@ -16,86 +16,97 @@ full warehouse, and `wrapped_report` writes to disk. The Spotify tools
 read their token from Redis rather than running a browser login (see
 `selector.spotify.remote_store`).
 
-Two deliberate choices, both driven by this being a single-user deployment:
+Auth is MCP OAuth with Spotify as the login (`selector.mcp.oauth`): only
+the owner's Spotify account gets a token. While `SELECTOR_MCP_TOKEN` is
+still set, that static bearer is accepted too, for clients not yet moved
+over.
 
-- `stateless_http=True` — each request is handled independently with no
-  server-side session state, since a serverless function gets a fresh
-  instance on every cold start and there's no session store (e.g. Redis)
-  wired up. This is fine for the request/response tool calls exposed here.
-- Auth is a single shared-secret bearer token (`SELECTOR_MCP_TOKEN`), not the
-  SDK's full OAuth provider machinery, since there's exactly one legitimate
-  caller (the deployer) rather than a population of distinct users.
+It fails closed. If Redis, `SELECTOR_TOKEN_KEY`,
+`SELECTOR_OWNER_SPOTIFY_ID`, `SPOTIFY_CLIENT_ID` or the public URL is
+missing, every request gets 503. Local testing without any of that needs
+the explicit opt-out `SELECTOR_MCP_ALLOW_NO_AUTH=1`, which serves with no
+auth at all.
+
+`stateless_http=True`: each request is handled independently with no MCP
+session state, since a serverless function gets a fresh instance on every
+cold start. That's fine for the request/response tool calls exposed here.
 """
 
 from __future__ import annotations
 
-import hmac
+import logging
 import os
+from typing import Any
 
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import TransportSecuritySettings
 from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from selector.mcp import oauth
 from selector.mcp.spotify_tools import REMOTE_SPOTIFY_TOOLS, add_spotify_tools
 from selector.mcp.warehouse_tools import INSTRUCTIONS, WAREHOUSE_TOOLS
+from selector.spotify.remote_store import RemoteStoreNotConfigured
 
 DEPLOY_TOOLS = (*WAREHOUSE_TOOLS, *REMOTE_SPOTIFY_TOOLS)
 
-deploy_server = MCPServer(name="selector", instructions=INSTRUCTIONS)
-for _tool in WAREHOUSE_TOOLS:
-    deploy_server.add_tool(_tool)
-add_spotify_tools(deploy_server, REMOTE_SPOTIFY_TOOLS)
-
-TOKEN_ENV_VAR = "SELECTOR_MCP_TOKEN"
-# Local `uvicorn` testing only. Never set on Vercel: without it, a missing
-# token refuses every request instead of serving the warehouse to anyone.
+# Local `uvicorn` testing only. Never set on Vercel.
 ALLOW_NO_AUTH_ENV_VAR = "SELECTOR_MCP_ALLOW_NO_AUTH"
 
-
-class BearerAuthMiddleware:
-    """Pure-ASGI (not BaseHTTPMiddleware) so the Streamable HTTP transport's
-    SSE responses pass through unbuffered.
-
-    Fails closed: if `SELECTOR_MCP_TOKEN` isn't set, every request gets 503,
-    so a deployment that forgot the env var serves nothing rather than the
-    whole warehouse. Local testing without a token needs the explicit opt-out
-    `SELECTOR_MCP_ALLOW_NO_AUTH=1`.
-    """
-
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
-            await self.app(scope, receive, send)
-            return
-
-        expected = os.environ.get(TOKEN_ENV_VAR)
-        if not expected:
-            if os.environ.get(ALLOW_NO_AUTH_ENV_VAR) != "1":
-                response = PlainTextResponse("Server not configured", status_code=503)
-                await response(scope, receive, send)
-                return
-        else:
-            headers = dict(scope.get("headers") or [])
-            got = headers.get(b"authorization", b"")
-            if not hmac.compare_digest(got, f"Bearer {expected}".encode("latin-1")):
-                response = PlainTextResponse("Unauthorized", status_code=401)
-                await response(scope, receive, send)
-                return
-
-        await self.app(scope, receive, send)
-
+log = logging.getLogger(__name__)
 
 # The SDK's DNS-rebinding protection matches the `Host` header against an
 # allowlist meant for a server bound to localhost — it would reject every
 # real request here, since Vercel's Host header is the deployment domain,
 # not "localhost". That protection defends against a browser being tricked
 # into hitting a *local* MCP server; it doesn't apply to a public endpoint
-# gated by its own bearer token, which is the actual access control here.
+# gated by its own OAuth tokens, which are the actual access control here.
 _transport_security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
 
-app = BearerAuthMiddleware(
-    deploy_server.streamable_http_app(stateless_http=True, transport_security=_transport_security)
-)
+
+def build_server(provider: oauth.SpotifyOAuthProvider | None = None) -> MCPServer:
+    """The deploy tool set, with OAuth when `provider` is given."""
+    kwargs: dict[str, Any] = {}
+    if provider is not None:
+        kwargs = {"auth_server_provider": provider, "auth": provider.config.auth_settings()}
+    server = MCPServer(name="selector", instructions=INSTRUCTIONS, **kwargs)
+    for tool in WAREHOUSE_TOOLS:
+        server.add_tool(tool)
+    add_spotify_tools(server, REMOTE_SPOTIFY_TOOLS)
+    if provider is not None:
+        server.custom_route(oauth.CALLBACK_PATH, methods=["GET"])(provider.handle_spotify_callback)
+    return server
+
+
+async def _not_configured(scope: Scope, receive: Receive, send: Send) -> None:
+    if scope["type"] == "http":
+        await PlainTextResponse("Server not configured", status_code=503)(scope, receive, send)
+    elif scope["type"] == "lifespan":
+        while True:
+            message = await receive()
+            if message["type"] == "lifespan.startup":
+                await send({"type": "lifespan.startup.complete"})
+            elif message["type"] == "lifespan.shutdown":
+                await send({"type": "lifespan.shutdown.complete"})
+                return
+
+
+def create_app(provider: oauth.SpotifyOAuthProvider | None = None) -> tuple[MCPServer, ASGIApp]:
+    """Build the server and its ASGI app from the environment (or the given
+    provider). A missing setting gives a 503-only app, never an open one."""
+    if provider is None:
+        try:
+            provider = oauth.SpotifyOAuthProvider.from_env()
+        except RemoteStoreNotConfigured as exc:
+            server = build_server()
+            if os.environ.get(ALLOW_NO_AUTH_ENV_VAR) == "1":
+                return server, server.streamable_http_app(
+                    stateless_http=True, transport_security=_transport_security
+                )
+            log.error("refusing every request: %s", exc)
+            return server, _not_configured
+    server = build_server(provider)
+    return server, server.streamable_http_app(stateless_http=True, transport_security=_transport_security)
+
+
+deploy_server, app = create_app()

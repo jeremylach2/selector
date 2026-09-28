@@ -4,8 +4,9 @@ A serverless function has no home directory that outlives it, so the
 token cache in `~/.selector/token.json` has no equivalent there. Instead
 the token set lives in one Redis key, encrypted with Fernet under
 `SELECTOR_TOKEN_KEY`, so a leaked Redis dump or Redis token alone can't be
-used against the Spotify account. It's seeded once, from this machine, by
-`scripts/seed_remote_spotify_token.py`, and refreshed in place after that.
+used against the Spotify account. It's written by the MCP OAuth login
+(`selector.mcp.oauth`) or by `scripts/seed_remote_spotify_token.py`, and
+refreshed in place after that.
 
 Redis is spoken over Upstash's REST API with `httpx`, so the function needs
 no Redis client package. The Upstash integration on Vercel sets
@@ -26,7 +27,7 @@ from typing import Any
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
 
-from selector.spotify.auth import SpotifyAuthError, TokenSet
+from selector.spotify.auth import RELOGIN_HINT, SpotifyAuthError, TokenSet
 
 URL_ENV_VARS = ("KV_REST_API_URL", "UPSTASH_REDIS_REST_URL")
 TOKEN_ENV_VARS = ("KV_REST_API_TOKEN", "UPSTASH_REDIS_REST_TOKEN")
@@ -120,7 +121,7 @@ class RedisTokenStore:
             data = json.loads(self._fernet.decrypt(blob.encode("ascii")))
         except InvalidToken as exc:
             raise SpotifyAuthError(
-                f"The stored Spotify token can't be decrypted ({KEY_ENV_VAR} changed?). Re-seed it."
+                f"The stored Spotify token can't be decrypted ({KEY_ENV_VAR} changed?). {RELOGIN_HINT}"
             ) from exc
         return TokenSet.from_dict(data)
 

@@ -20,10 +20,38 @@ Spotify auth flow) and `docs/PRIVACY.md` (what may leave this machine).
   `KV_REST_API_TOKEN` on every environment, so the development pull in
   `.env.local` points at the same store). `SELECTOR_TOKEN_KEY` and
   `SPOTIFY_CLIENT_ID` are set on production. The remote token is seeded
-  with all four remote scopes. Left: rotate the bearer, push to `main`,
-  run `check_mcp_deploy.py --write`. Note that `uv run` fails to sync while
+  with all four remote scopes. The bearer was rotated and the code
+  deployed (`e6d999a`). `check_mcp_deploy.py` passes: 15 tools listed,
+  and `spotify_search` works through the hosted token. The claude.ai
+  connector created a playlist through the hosted server. **Phase 1 is
+  complete.** Note that `uv run` fails to sync while
   the local MCP server is running (it holds `selector-mcp.exe`), so the
   scripts were run with `uv run --no-sync`.
+- **Phase 2 code: done.** `src/selector/mcp/oauth.py` is the provider
+  (Steps 2 and 4), `scripts/revoke_mcp_sessions.py` is Step 6,
+  `scripts/setup_mcp_oauth.py` sets `SELECTOR_OWNER_SPOTIFY_ID` (from the
+  `spotify:owner` key the seeding wrote) and `SELECTOR_MCP_PUBLIC_URL`.
+  `tests/test_mcp_oauth.py` (21 tests) drives the real app end to end and
+  replaces `tests/test_http_auth.py`. Docs updated (Step 8). Decisions made
+  while building:
+  - **Step 3: no client secret.** The server does the Spotify leg as PKCE
+    too, with the verifier kept in the parked request, so refreshes keep
+    working with the same code path and there's no new secret. The secret
+    would sit next to `SELECTOR_TOKEN_KEY` in the same Vercel env, so it
+    adds little.
+  - **Redirect URI allowlist on `/register`** (claude.ai callbacks and
+    loopback only), instead of a consent page. Spotify skips its consent
+    screen for an already-approved app, so without it a stranger could
+    register their own redirect URI and phish a token with one click.
+  - **Step 5 migration** is built into the provider: while
+    `SELECTOR_MCP_TOKEN` is set, it's accepted as an access token too.
+  - `check_mcp_deploy.py` now mints a five-minute access token straight
+    into Redis, so it keeps working once the static bearer is gone.
+- **Phase 2 operations:** `setup_mcp_oauth.py` has run (both vars set on
+  production). Left: register
+  `https://selector-mcp.vercel.app/oauth/spotify/callback` on the Spotify
+  app, reconnect the claude.ai connector with no token, then remove
+  `SELECTOR_MCP_TOKEN` and `rotate_mcp_token.py` (Step 5's last part).
 - **Open question 2 answered:** a second grant leaves the first working.
   After seeding, the local refresh token still refreshed.
 - **Open question 3 answered:** the claude.ai connector sends the static

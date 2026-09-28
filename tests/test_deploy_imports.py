@@ -22,7 +22,7 @@ ENTRYPOINT = REPO / "api" / "index.py"
 # Distribution name -> import name, where they differ.
 IMPORT_NAMES = {"python-dotenv": "dotenv"}
 # Installed as dependencies of a listed package, and imported directly.
-TRANSITIVE = {"starlette": "mcp"}
+TRANSITIVE = {"starlette": "mcp", "anyio": "mcp"}
 
 
 def _allowed() -> set[str]:

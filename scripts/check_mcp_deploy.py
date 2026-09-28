@@ -1,9 +1,14 @@
 """Smoke-check the hosted MCP server without printing any secret.
 
-Reads the Blob token from .env.local (and web/.env.local for comparison)
-and the bearer token from ~/.selector/mcp_token (written by
-rotate_mcp_token.py). Prints only yes/no results, status codes and tool
+Reads the Blob token and the Redis pair from .env.local (and
+web/.env.local for comparison), and SELECTOR_TOKEN_KEY from
+~/.selector/token_key. Prints only yes/no results, status codes and tool
 names.
+
+It checks the OAuth discovery endpoints, then calls the server with a
+five-minute access token written straight to Redis (deleted again at the
+end), so no browser login is needed. If ~/.selector/mcp_token exists, it
+also reports whether the old static bearer is still accepted.
 
     uv run python scripts/check_mcp_deploy.py [https://selector-mcp.vercel.app] [--write]
 
@@ -25,7 +30,8 @@ import httpx
 from dotenv import dotenv_values, load_dotenv
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from selector.mcp import deploy_data
+from selector.mcp import deploy_data, oauth
+from selector.spotify import remote_store
 from selector.spotify.client import SpotifyClient
 
 REMOTE_SPOTIFY_TOOLS = {
@@ -38,6 +44,7 @@ REMOTE_SPOTIFY_TOOLS = {
 }
 
 TOKEN_FILE = Path.home() / ".selector" / "mcp_token"
+KEY_FILE = Path.home() / ".selector" / "token_key"
 HEADERS = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
 INIT = {
     "jsonrpc": "2.0",
@@ -98,17 +105,42 @@ def main() -> None:
     print(f"warehouse blob: HTTP {r.status_code}, {size / 1e6:.1f} MB")
 
     url = f"{base}/mcp"
-    print(f"no token -> HTTP {httpx.post(url, headers=HEADERS, json=INIT, timeout=60).status_code} (want 401)")
+    r = httpx.post(url, headers=HEADERS, json=INIT, timeout=60)
+    points = f'resource_metadata="{base}/.well-known/oauth-protected-resource/mcp"' in r.headers.get("www-authenticate", "")
+    print(f"no token -> HTTP {r.status_code} (want 401), points at resource metadata: {'yes' if points else 'NO'}")
     wrong = {**HEADERS, "Authorization": "Bearer not-the-token"}
     print(f"wrong token -> HTTP {httpx.post(url, headers=wrong, json=INIT, timeout=60).status_code} (want 401)")
+    resource = httpx.get(f"{base}/.well-known/oauth-protected-resource/mcp", timeout=30)
+    ok = resource.status_code == 200 and resource.json().get("authorization_servers") == [base]
+    print(f"protected resource metadata names this server: {'yes' if ok else f'NO (HTTP {resource.status_code})'}")
+    server = httpx.get(f"{base}/.well-known/oauth-authorization-server", timeout=30)
+    ok = server.status_code == 200 and server.json().get("registration_endpoint") == f"{base}/register"
+    print(f"authorization server metadata with registration: {'yes' if ok else f'NO (HTTP {server.status_code})'}")
 
-    if not TOKEN_FILE.exists():
-        sys.exit(f"{TOKEN_FILE} missing; run rotate_mcp_token.py")
-    authed = {**HEADERS, "Authorization": f"Bearer {TOKEN_FILE.read_text(encoding='utf-8').strip()}"}
-    r = httpx.post(url, headers=authed, json=INIT, timeout=60)
-    print(f"new token -> HTTP {r.status_code} (want 200)")
-    if r.status_code != 200:
-        sys.exit("the new token isn't live yet: has the push to main deployed?")
+    if TOKEN_FILE.exists():
+        legacy = {**HEADERS, "Authorization": f"Bearer {TOKEN_FILE.read_text(encoding='utf-8').strip()}"}
+        code = httpx.post(url, headers=legacy, json=INIT, timeout=60).status_code
+        print(f"static bearer -> HTTP {code} ({'still accepted' if code == 200 else 'retired'})")
+
+    load_dotenv(".env.local")
+    key = os.environ.get(remote_store.KEY_ENV_VAR) or (KEY_FILE.read_text(encoding="utf-8").strip() if KEY_FILE.exists() else None)
+    if not key:
+        sys.exit(f"no {remote_store.KEY_ENV_VAR} and no {KEY_FILE}")
+    redis = remote_store.UpstashRedis.from_env()
+    owner = redis.command("GET", remote_store.OWNER_KEY) or "owner"
+    token, token_key = oauth.mint_access_token(redis, key, owner)
+    try:
+        authed = {**HEADERS, "Authorization": f"Bearer {token}"}
+        r = httpx.post(url, headers=authed, json=INIT, timeout=60)
+        print(f"OAuth access token -> HTTP {r.status_code} (want 200)")
+        if r.status_code != 200:
+            sys.exit("the OAuth server isn't live yet: has the push to main deployed, with its env vars?")
+        _check_tools(url, authed, write)
+    finally:
+        redis.command("DEL", token_key)
+
+
+def _check_tools(url: str, authed: dict, write: bool) -> None:
     tools = _rpc_result(httpx.post(url, headers=authed, json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, timeout=60))
     names = sorted(t["name"] for t in tools["tools"])
     print(f"tools ({len(names)}): {', '.join(names)}")

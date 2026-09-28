@@ -17,6 +17,13 @@ Spotify dashboard hands you one when you register an app.
    authorize request with `INVALID_CLIENT: Invalid redirect URI`. It's
    `127.0.0.1`, not `localhost` — Spotify treats those as different strings
    even though they resolve the same way locally.
+
+   For the hosted MCP server's login, also register
+   ```
+   https://selector-mcp.vercel.app/oauth/spotify/callback
+   ```
+   (the stable production domain, not a deployment URL). HTTPS is required
+   for any redirect URI that isn't a loopback address.
 3. Copy the **Client ID** into `.env` as `SPOTIFY_CLIENT_ID`. The **Client
    Secret** isn't needed (see above) but `.env.example` has a slot for it
    anyway, since the dashboard gives you both at once.
@@ -44,11 +51,18 @@ The hosted MCP server has its own, separate grant with narrower scopes
 user-library-read user-top-read user-read-recently-played playlist-modify-private
 ```
 
-It's seeded from this machine by `scripts/seed_remote_spotify_token.py`,
-which runs the same browser flow below but writes the token, encrypted, to
-the MCP project's Redis instead of `~/.selector/token.json`. The hosted
-server never runs the browser flow: a missing or dead token is an error
-that says to re-run the seeding script. See `docs/DEPLOY_MCP.md`.
+It's written by the hosted server's own OAuth login: when an MCP client
+connects, the server sends the browser to Spotify with these scopes,
+exchanges the code itself (PKCE, verifier kept server side, so still no
+client secret), checks that `GET /me` is the owner, and stores the token,
+encrypted, in the MCP project's Redis. Every login replaces it.
+`scripts/seed_remote_spotify_token.py` does the same from this machine
+through the loopback redirect, and still works as a fallback. The hosted
+server never runs a browser flow of its own: a missing or dead token is an
+error that says to reconnect the client. See `docs/DEPLOY_MCP.md`.
+
+To revoke every grant, local included, remove the app at spotify.com →
+Account → Apps.
 
 ## How the flow works end to end
 
