@@ -8,8 +8,9 @@ what is published, what is gated, and the checks that keep it that way.
 | Surface | Contents |
 | --- | --- |
 | `/` and `/watch` | Your own export, parsed in the browser tab. Nothing is uploaded. |
-| `/rewind` | The year-in-listening story for an **invented listener**, never a real one |
+| `/rewind` | The year-in-listening story for an **invented listener**, never a real one. A visitor who dropped their own export on `/` also gets theirs, built in the tab and never uploaded |
 | `web/public/fly/catalog.json.gz` | The library's track names and artists, no play counts or timestamps |
+| `web/public/fly/rewind.json.gz` | Catalog metadata for the visitor's Rewind: the 12 cluster medoids and feature-built names, which tracks lack measured audio, and album release years. No play counts or timestamps |
 | `web/public/sample/sample_spotify_data.zip` | The invented listener: real catalog tracks, generated plays |
 
 ## Rewind: two profiles

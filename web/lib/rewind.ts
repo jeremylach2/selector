@@ -2,13 +2,14 @@
 // `python -m selector.warehouse.wrapped --profile ...`. Mirrors
 // `selector.warehouse.wrapped` -- change both together. The synthetic set is
 // public under public/rewind/; the private set is only ever served by the
-// gated route in app/rewind/private/.
+// gated route in app/rewind/private/. A visitor's own set is built in the tab
+// by lib/rewind-visitor.ts and never leaves it.
 
 export const SCHEMA_MAJOR = "2";
 
 export type Coverage = {
   tier: "A" | "B";
-  tracks_used: number;
+  tracks_used: number; // tier A: tracks the fly catalog has fingerprints for
   of: number;
   plays_used?: number; // tier B: plays with a release year
   plays_of?: number;
@@ -66,7 +67,9 @@ export type Card =
 export type AnyCard = Card | CardOf<string, unknown>;
 
 // "synthetic": the invented sample listener. "private": the real history.
-export type Audience = "synthetic" | "private";
+// "visitor": built in the browser from a visitor's own export (TS only; the
+// Python pipeline never writes one).
+export type Audience = "synthetic" | "private" | "visitor";
 
 export type Report = {
   schema_version: string;
@@ -85,18 +88,22 @@ export type ReportIndex = {
   windows: { id: string; label: string; from: string | null; to: string | null; plays: number }[];
 };
 
-// Where a story loads its reports from: the public static files, or the
-// gated route with the share token sent as a bearer header.
-export type ReportSource = { base: string; token?: string };
+// Where a story loads its reports from: the public static files, the gated
+// route with the share token sent as a bearer header, or reports already
+// built in memory.
+export type LocalReports = { index: ReportIndex; reports: Record<string, Report> };
+export type ReportSource = { base: string; token?: string } | { local: LocalReports };
 
 export const PUBLIC_SOURCE: ReportSource = { base: "/rewind" };
 
-function reportUrl(source: ReportSource, id: string): string {
+type RemoteSource = Extract<ReportSource, { base: string }>;
+
+function reportUrl(source: RemoteSource, id: string): string {
   const name = encodeURIComponent(id);
   return source.token ? `${source.base}/${name}` : `${source.base}/${name}.json`;
 }
 
-async function getJson<T>(url: string, source: ReportSource): Promise<T> {
+async function getJson<T>(url: string, source: RemoteSource): Promise<T> {
   const res = await fetch(url, {
     headers: source.token ? { Authorization: `Bearer ${source.token}` } : undefined,
     cache: source.token ? "no-store" : "default",
@@ -112,6 +119,7 @@ function checkSchema(version: string, url: string): void {
 }
 
 export async function loadIndex(source: ReportSource = PUBLIC_SOURCE): Promise<ReportIndex> {
+  if ("local" in source) return source.local.index;
   const url = reportUrl(source, "index");
   const index = await getJson<ReportIndex>(url, source);
   checkSchema(index.schema_version, url);
@@ -119,6 +127,11 @@ export async function loadIndex(source: ReportSource = PUBLIC_SOURCE): Promise<R
 }
 
 export async function loadReport(id: string, source: ReportSource = PUBLIC_SOURCE): Promise<Report> {
+  if ("local" in source) {
+    const report = source.local.reports[id];
+    if (!report) throw new Error(`no report for window ${id}`);
+    return report;
+  }
   const url = reportUrl(source, id);
   const report = await getJson<Report>(url, source);
   checkSchema(report.schema_version, url);
@@ -134,7 +147,12 @@ export function coverageNote(c: Coverage | undefined): string | null {
   if (!c) return null;
   if (c.plays_of) return `Tier ${c.tier} · covers ${Math.round((100 * (c.plays_used ?? 0)) / c.plays_of)}% of plays`;
   if (c.measured !== undefined && c.tracks_used) {
-    return `Tier ${c.tier} · ${Math.round((100 * c.measured) / c.tracks_used)}% of these tracks have measured audio, the rest predicted features`;
+    const measured = `${Math.round((100 * c.measured) / c.tracks_used)}% of these tracks have measured audio, the rest predicted features`;
+    // A visitor's export only partly overlaps the fly catalog.
+    if (c.tracks_used < c.of) {
+      return `Tier ${c.tier} · the fly knows ${c.tracks_used.toLocaleString()} of your ${c.of.toLocaleString()} tracks · ${measured}`;
+    }
+    return `Tier ${c.tier} · ${measured}`;
   }
   return `Tier ${c.tier} · ${c.tracks_used.toLocaleString()} of ${c.of.toLocaleString()} tracks`;
 }

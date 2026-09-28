@@ -41,17 +41,22 @@ export type Dashboard = {
   verdicts: { reward: number; punish: number; neutral: number };
 };
 
-// Everything the fly brain and the DJ need from the history, sent once the
-// whole export is parsed. Per-track arrays share one index; `seq*` arrays
-// are every play in chronological order.
+// Everything the fly brain, the DJ and the visitor's Rewind need from the
+// history, sent once the whole export is parsed. Per-track arrays share one
+// index; `seq*` arrays are every play in chronological order.
 export type History = {
   trackIds: string[];
   names: string[];
   artists: string[];
+  albums: string[]; // "" when the export has no album name
   plays: Uint32Array;
   lastPlayed: Float64Array;
   seqTrack: Uint32Array;
   seqVerdict: Int8Array;
+  seqTs: Float64Array; // epoch ms
+  seqMs: Float64Array; // ms played
+  seqFwd: Uint8Array; // 1 when the play ended on the forward button
+  timeZone: string; // the zone the dashboard was drawn in
 };
 
 export type WorkerOut =

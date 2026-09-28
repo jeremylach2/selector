@@ -1215,6 +1215,14 @@ footer p {
   max-width: 520px;
   margin: 0 auto 32px;
 }
+.rewind-whose {
+  max-width: 520px;
+  margin: 0 auto;
+}
+.rewind-own-cta {
+  color: var(--ink-2);
+  margin: 0 0 16px;
+}
 .story-windows {
   display: flex;
   flex-wrap: wrap;

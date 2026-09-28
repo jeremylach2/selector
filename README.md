@@ -122,6 +122,6 @@ A biologist's connectome, a paper from 2017, and a few weekends of evenings were
 
 What this is: the fly's olfactory circuit used as a locality-sensitive hash, per *Science* 2017, wired from the real connectome, plus the mushroom body's plasticity rule trained on skips. A connectome is a wiring diagram, not a trained brain. Nothing here claims a fly brain does general tasks. It is one circuit used as a hash, plus one learning rule.
 
-Not affiliated with or endorsed by Spotify. Non-commercial: no ads, paid tiers or sponsorship, on the site or the MCP server. The public Rewind story at `/rewind` shows an invented listener, never real listening history; see [docs/PRIVACY.md](docs/PRIVACY.md).
+Not affiliated with or endorsed by Spotify. Non-commercial: no ads, paid tiers or sponsorship, on the site or the MCP server. The public Rewind story at `/rewind` shows an invented listener, never real listening history (a visitor's own Rewind is built in their tab and never leaves it); see [docs/PRIVACY.md](docs/PRIVACY.md).
 
 MIT licensed. See [LICENSE](LICENSE).

@@ -21,6 +21,12 @@ static files under `web/public/`:
   preview matched). The build recomputes every tag from this file the way
   the browser will and refuses to write it if any differs from
   `data/fly_tags.npz` outside ties at the winner-take-all cutoff.
+- `fly/rewind.json.gz` -- what `/rewind` needs to build a visitor's own
+  report in the browser: the 12 taste-cluster medoids (as catalog track
+  ids) with their feature-built names, library-wide cluster sizes, which
+  catalog tracks lack measured audio, and album release years keyed by the
+  normalised `(artist, album)` key. All of it is catalog metadata; nothing
+  about how the author listened. `--rewind-only` rebuilds just this file.
 - `sample/sample_spotify_data.zip` -- a **synthetic** Extended Streaming History
   export in Spotify's real schema, for visitors with no export of their own.
   The listener is invented: tracks are drawn from the catalog around three
@@ -35,6 +41,7 @@ Usage: uv run python scripts/build_demo_assets.py
 
 from __future__ import annotations
 
+import argparse
 import gzip
 import io
 import json
@@ -46,6 +53,7 @@ import duckdb
 import numpy as np
 import pandas as pd
 
+from selector.audio.metadata import DEFAULT_OUTPUT_PATH as RELEASE_YEARS_PATH
 from selector.dj.pool import (
     FALLBACK_DURATION_MS,
     MAX_DURATION_MS,
@@ -53,6 +61,7 @@ from selector.dj.pool import (
     MIN_VALID_BPM,
     measured_energy,
 )
+from selector.fly import clusters as fly_clusters
 from selector.fly import pipeline as fly_pipeline
 from selector.fly.connectome import (
     DATA_VERSION,
@@ -61,11 +70,13 @@ from selector.fly.connectome import (
 )
 from selector.fly.lsh import hamming_distances
 from selector.warehouse.build import DEFAULT_DB_PATH
+from selector.warehouse.queries import normalize_album_key
 
 WEB_PUBLIC = Path("web/public")
 CATALOG_PATH = WEB_PUBLIC / "fly/catalog.json.gz"
 TAGS_PATH = WEB_PUBLIC / "fly/tags.bin.gz"
 CIRCUIT_PATH = WEB_PUBLIC / "fly/circuit.json.gz"
+REWIND_ASSET_PATH = WEB_PUBLIC / "fly/rewind.json.gz"
 SAMPLE_PATH = WEB_PUBLIC / "sample/sample_spotify_data.zip"
 
 SEED = 7
@@ -374,11 +385,70 @@ def build_sample(cat: pd.DataFrame, tags) -> None:
     print(f"sample: {len(records):,} synthetic plays, {SAMPLE_PATH.stat().st_size / 1e6:.2f} MB")
 
 
-def main() -> None:
+def write_rewind_assets(cat: pd.DataFrame, tags) -> None:
+    """The visitor layer of `/rewind`. See the module docstring.
+
+    Cluster names are the feature-built ones only, taken before
+    `cluster_summary` disambiguates duplicates by top artist: that step reads
+    play counts, so the browser repeats it on the visitor's own plays.
+    """
+    taste = fly_clusters.load_or_fit_clusters()
+    features = fly_clusters.track_feature_frame()
+    frame = pd.DataFrame({"track_id": taste.track_ids, "cluster": taste.labels}).join(features, on="track_id")
+
+    # The browser assigns a track to its nearest medoid by Hamming distance,
+    # first medoid on a tie. Every tag has the same popcount, so that is the
+    # fitted assignment; refuse to ship medoids for which it isn't.
+    row_of = {tid: i for i, tid in enumerate(taste.track_ids)}
+    medoid_tags = tags[[row_of[m] for m in taste.medoid_track_ids]]
+    nearest = np.argmin(fly_clusters.pairwise_hamming(tags, medoid_tags), axis=1)
+    if not np.array_equal(nearest, taste.labels):
+        raise ValueError("nearest-medoid assignment differs from the fitted cluster labels")
+
+    clusters = []
+    for c in range(taste.k):
+        members = frame[frame["cluster"] == c]
+        clusters.append({
+            "medoid": taste.medoid_track_ids[c],
+            "built_name": fly_clusters.built_name(members, frame),
+            "track_count": len(members),
+            "measured_share": round(float(members["has_measured"].mean()), 3) if len(members) else 0.0,
+        })
+
+    catalog_ids = cat["track_id"].tolist()
+    unmeasured = [i for i, tid in enumerate(catalog_ids) if not features["has_measured"].get(tid, False)]
+
+    keys = {
+        normalize_album_key(a if isinstance(a, str) else "", b if isinstance(b, str) else "")
+        for a, b in zip(cat["artist"], cat["album"])
+    }
+    years = pd.read_parquet(RELEASE_YEARS_PATH, columns=["album_key", "release_year"]).dropna()
+    years = years[years["album_key"].isin(keys)].drop_duplicates("album_key").sort_values("album_key")
+
+    payload = {
+        "version": 1,
+        "cluster_key": taste.cache_key,
+        "clusters": clusters,
+        "unmeasured_rows": unmeasured,
+        "release_years": dict(zip(years["album_key"], years["release_year"].astype(int).tolist())),
+    }
+    REWIND_ASSET_PATH.write_bytes(gzip.compress(json.dumps(payload, separators=(",", ":")).encode(), 9))
+    print(
+        f"rewind: {taste.k} clusters, {len(unmeasured):,} tracks without measured audio, "
+        f"{len(years):,} album years, {REWIND_ASSET_PATH.stat().st_size / 1e3:.0f} KB"
+    )
+
+
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--rewind-only", action="store_true", help="rebuild only fly/rewind.json.gz")
+    args = parser.parse_args(argv)
     cat, tags = build_catalog()
-    write_catalog(cat, tags)
-    write_circuit(cat, tags)
-    build_sample(cat, tags)
+    if not args.rewind_only:
+        write_catalog(cat, tags)
+        write_circuit(cat, tags)
+        build_sample(cat, tags)
+    write_rewind_assets(cat, tags)
 
 
 if __name__ == "__main__":

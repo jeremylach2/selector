@@ -77,6 +77,7 @@ export function IntroSlide({ report }: { report: Report }) {
         {w.from} → {w.to}
       </p>
       {report.audience === "synthetic" && <p className="slide-cov">An invented listener, not a real person.</p>}
+      {report.audience === "visitor" && <p className="slide-cov">Built in this tab from your export. Nothing was uploaded.</p>}
       <dl className="intro-totals">
         <div>
           <dt>plays</dt>

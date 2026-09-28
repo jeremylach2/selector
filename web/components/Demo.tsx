@@ -203,6 +203,12 @@ export default function Demo() {
           </div>
         )}
 
+        {history && run?.source === "own" && (
+          <Link className="cta-watch" href="/rewind">
+            See your listening as a Rewind story →
+          </Link>
+        )}
+
         {dashboard && s && (
           <section className="block" aria-labelledby="dash-h">
             <h2 id="dash-h">{run?.source === "sample" ? "The sample listener, in charts" : "Your listening, in charts"}</h2>

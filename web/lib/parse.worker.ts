@@ -15,6 +15,7 @@ type RawPlay = {
   ms_played?: number;
   master_metadata_track_name?: string | null;
   master_metadata_album_artist_name?: string | null;
+  master_metadata_album_album_name?: string | null;
   spotify_track_uri?: string | null;
   reason_end?: string | null;
 };
@@ -46,6 +47,7 @@ class State {
   trackIds: string[] = [];
   trackNames: string[] = [];
   trackArtist: number[] = [];
+  trackAlbums: string[] = [];
   artistIndex = new Map<string, number>();
   artistNames: string[] = [];
 
@@ -106,6 +108,7 @@ class State {
         this.trackIds.push(id);
         this.trackNames.push(r.master_metadata_track_name ?? "Unknown track");
         this.trackArtist.push(ai);
+        this.trackAlbums.push(r.master_metadata_album_album_name ?? "");
       }
       this.ts.push(t);
       this.ms.push(r.ms_played ?? 0);
@@ -258,18 +261,24 @@ class State {
     };
   }
 
-  history(): History {
+  history(timeZone: string): History {
     const n = this.ts.length;
     const order = Array.from({ length: n }, (_, i) => i).sort((a, b) => this.ts[a] - this.ts[b]);
     const v = this.verdicts();
     const seqTrack = new Uint32Array(n);
     const seqVerdict = new Int8Array(n);
+    const seqTs = new Float64Array(n);
+    const seqMs = new Float64Array(n);
+    const seqFwd = new Uint8Array(n);
     const plays = new Uint32Array(this.trackIds.length);
     const lastPlayed = new Float64Array(this.trackIds.length);
     order.forEach((i, k) => {
       const t = this.track[i];
       seqTrack[k] = t;
       seqVerdict[k] = v[i];
+      seqTs[k] = this.ts[i];
+      seqMs[k] = this.ms[i];
+      seqFwd[k] = this.reason[i] === R_FWDBTN ? 1 : 0;
       plays[t]++;
       if (this.ts[i] > lastPlayed[t]) lastPlayed[t] = this.ts[i];
     });
@@ -277,10 +286,15 @@ class State {
       trackIds: this.trackIds,
       names: this.trackNames,
       artists: this.trackArtist.map((a) => this.artistNames[a]),
+      albums: this.trackAlbums,
       plays,
       lastPlayed,
       seqTrack,
       seqVerdict,
+      seqTs,
+      seqMs,
+      seqFwd,
+      timeZone,
     };
   }
 }
@@ -347,7 +361,7 @@ self.onmessage = async (e: MessageEvent<WorkerIn>) => {
     }
     if (!state.ts.length) throw new Error("The export parsed, but it contains no music plays.");
 
-    const history = state.history();
+    const history = state.history(e.data.timeZone);
     post(
       {
         type: "done",
@@ -355,7 +369,15 @@ self.onmessage = async (e: MessageEvent<WorkerIn>) => {
         history,
         ms: performance.now() - started,
       },
-      [history.plays.buffer, history.lastPlayed.buffer, history.seqTrack.buffer, history.seqVerdict.buffer],
+      [
+        history.plays.buffer,
+        history.lastPlayed.buffer,
+        history.seqTrack.buffer,
+        history.seqVerdict.buffer,
+        history.seqTs.buffer,
+        history.seqMs.buffer,
+        history.seqFwd.buffer,
+      ],
     );
   } catch (err) {
     post({ type: "error", message: err instanceof Error ? err.message : String(err) });
