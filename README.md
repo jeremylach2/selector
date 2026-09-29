@@ -88,6 +88,28 @@ Then ask Claude Code something like *"what did I binge in March and then abandon
 
 **Tests:** `uv run pytest` (323 tests, no personal data needed) and `uv run ruff check .`. CI runs both, plus a guard (`scripts/check_personal_data.py`) that fails the build if an export file, audio, a token or an `ip_addr` value is ever committed.
 
+## Run your own
+
+Both extras below are optional and single-user. They need a free Vercel account, and the hosted server also needs a Spotify developer app and an Upstash Redis store from the Vercel Marketplace.
+
+**Hosted MCP server.** `api/index.py` serves the warehouse tools and the live Spotify tools (including a guarded `spotify_create_playlist`) over Streamable HTTP, so claude.ai or any MCP client can reach your data from anywhere. It is its own OAuth server with Spotify as the login, and only your Spotify account gets a token. Only a coarse copy of the warehouse is served (hourly buckets, no timestamps), downloaded from a private Vercel Blob store on cold start, so no personal data is in git or in the deployment. Build and upload it with:
+
+```bash
+uv run python -m selector.warehouse.build --deploy
+uv run python -m selector.mcp.deploy_data upload
+```
+
+Then link a Vercel project, add the Blob and Upstash stores, and run `scripts/setup_remote_spotify.py`, `scripts/seed_remote_spotify_token.py` and `scripts/setup_mcp_oauth.py` in that order. [docs/DEPLOY_MCP.md](docs/DEPLOY_MCP.md) has every command, the auth flow and the playlist guardrails. The `selector-mcp.vercel.app` URL in the code and docs is mine, so use your own project's URL.
+
+**A private Rewind.** Rewind is a year-in-listening story built from the warehouse. The public `/rewind` page shows an invented listener. To get your own, export the real reports and upload them to a private Blob store, which serves them only at an unguessable share link (`/rewind/p/<token>`):
+
+```bash
+uv run python -m selector.warehouse.wrapped --profile private
+cd web && node --env-file=.env.local scripts/upload-private-rewind.mjs
+```
+
+That needs a long random `REWIND_SHARE_TOKEN` set on the web project, and rotating it kills every old link. [docs/PRIVACY.md](docs/PRIVACY.md#the-private-share-link) covers the setup and what is and isn't published.
+
 ## Motivations and AI usage throughout this project
 
 In September 2026 there was a burst of "fly brain doing X" videos on YouTube, among them [*I Put a Fly's Conscious Brain into Minecraft*](https://youtu.be/BUkLWjcoBc0) and [*I Uploaded A Fruit Fly Brain To Reply To My Emails*](https://youtu.be/GmCbzlb091A). Sadly, the claims of these videos are largely sensational, so take the framing of those titles with some skepticism. What's public is a connectome, not a trained agent, and neither video's claim is something this project relies on or endorses. What they did give me was the idea. The FlyWire connectome is real, public, and citable, and the actual, defensible result in the 2017 *Science* paper (olfactory circuit as locality-sensitive hash) was sitting right there, unused for anything like this.
