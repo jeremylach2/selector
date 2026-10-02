@@ -160,6 +160,31 @@ familiar_ratio=0.6)`. `scripts/dj_cron.py` has Task Scheduler and cron
 lines in its docstring. A scheduled `--commit` needs a cached Spotify token
 (`~/.selector/token.json`) and never opens a browser login.
 
+### On the hosted server
+
+The same `dj_set` is on the hosted MCP server, so a set can be planned
+from claude.ai on a phone. Building the crate needs scipy, the fly brain
+and the per-play history, none of which the Vercel function has. So the
+crate is built locally and uploaded as data:
+
+```
+uv run python -m selector.dj.pool --deploy               # data/dj_crate_deploy.parquet, ~4 MB
+uv run python -m selector.mcp.deploy_data upload-crate
+```
+
+The file carries each track's Kenyon-cell tag and mushroom-body valence,
+so the hosted Select still scores coherence and taste with the fly brain.
+None of the five stages imports scipy: fly tags are held as CSR index
+arrays (`selector/dj/crate.py`) with a numpy Hamming distance. On the full
+16,700-track crate, six contexts (auto and named themes, 30 to 90 minutes)
+gave byte-identical runs before and after the switch, and again after a
+save-and-reload of the deploy file, down to every shortlist score.
+
+Hosted runs read recent plays through the hosted Spotify login, read the
+local hour from `SELECTOR_TIMEZONE`, write through the hosted playlist
+guardrails (daily cap, rollback, audit log) and keep no log on disk.
+`docs/DEPLOY_MCP.md#the-dj` has the details.
+
 ## Honest limits
 
 - Tempo and energy come from a 30-second preview, not the whole track. A

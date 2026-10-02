@@ -6,7 +6,11 @@ lives in a private Blob store connected only to the MCP project:
 
 - `upload` (run locally) puts `data/selector_deploy.duckdb` there, after
   re-checking that it's the coarse copy.
-- `fetch` (run by `api/index.py` on a cold start) downloads it into `/tmp`.
+- `upload-crate` (run locally) puts the DJ's deploy crate,
+  `data/dj_crate_deploy.parquet`, there too, after re-checking its columns
+  (`selector.dj.crate`).
+- `fetch` downloads either into `/tmp`: the warehouse on a cold start
+  (`api/index.py`), the crate on the first hosted `dj_set` call.
 
 Refreshing the data needs no deploy, and deploying code needs no data.
 Auth is the store's read-write token, `BLOB_READ_WRITE_TOKEN`, which
@@ -19,6 +23,8 @@ Usage, from the repo root (the directory linked to the MCP project):
     vercel env pull .env.local --environment=production   # brings BLOB_READ_WRITE_TOKEN
     uv run python -m selector.warehouse.build --deploy
     uv run python -m selector.mcp.deploy_data upload
+    uv run python -m selector.dj.pool --deploy
+    uv run python -m selector.mcp.deploy_data upload-crate
 """
 
 from __future__ import annotations
@@ -36,6 +42,7 @@ from selector.warehouse.build import DEFAULT_DEPLOY_DB_PATH, deploy_violations
 
 TOKEN_ENV_VAR = "BLOB_READ_WRITE_TOKEN"
 BLOB_PATHNAME = "mcp/selector_deploy.duckdb"
+CRATE_BLOB_PATHNAME = "mcp/dj_crate_deploy.parquet"
 BLOB_API_URL = "https://vercel.com/api/blob/"
 # The version `@vercel/blob` sends. The API rejects requests without one.
 BLOB_API_VERSION = "12"
@@ -88,6 +95,25 @@ def upload(path: Path = DEFAULT_DEPLOY_DB_PATH, pathname: str = BLOB_PATHNAME) -
         problems = deploy_violations(con)
     if problems:
         raise RuntimeError(f"{path} is not a deploy warehouse: {problems}")
+    _put(path, pathname)
+
+
+def upload_crate(path: Path | None = None, pathname: str = CRATE_BLOB_PATHNAME) -> None:
+    """Put the DJ's deploy crate in the store, overwriting the previous one.
+    Refuses a file with any column the hosted DJ doesn't read, or any
+    date/time column."""
+    import pyarrow.parquet as pq
+
+    from selector.dj.crate import DEFAULT_DEPLOY_CRATE_PATH, deploy_crate_violations
+
+    path = path or DEFAULT_DEPLOY_CRATE_PATH
+    problems = deploy_crate_violations(pq.read_schema(path))
+    if problems:
+        raise RuntimeError(f"{path} is not a deploy crate: {problems}")
+    _put(path, pathname)
+
+
+def _put(path: Path, pathname: str) -> None:
     token = _token()
     response = httpx.put(
         f"{BLOB_API_URL}?pathname={quote(pathname)}",
@@ -108,13 +134,18 @@ def upload(path: Path = DEFAULT_DEPLOY_DB_PATH, pathname: str = BLOB_PATHNAME) -
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["upload"])
-    parser.add_argument("--path", type=Path, default=DEFAULT_DEPLOY_DB_PATH)
+    parser.add_argument("command", choices=["upload", "upload-crate"])
+    parser.add_argument("--path", type=Path, help="defaults to the deploy warehouse or the deploy crate")
     parser.add_argument("--env-file", type=Path, default=Path(".env.local"))
     args = parser.parse_args(argv)
     load_dotenv(args.env_file)
-    upload(args.path)
-    print(f"uploaded {args.path} to the Blob store as {BLOB_PATHNAME}")
+    if args.command == "upload-crate":
+        upload_crate(args.path)
+        print(f"uploaded {args.path or 'the deploy crate'} to the Blob store as {CRATE_BLOB_PATHNAME}")
+    else:
+        path = args.path or DEFAULT_DEPLOY_DB_PATH
+        upload(path)
+        print(f"uploaded {path} to the Blob store as {BLOB_PATHNAME}")
 
 
 if __name__ == "__main__":

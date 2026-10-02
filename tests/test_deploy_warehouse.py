@@ -30,6 +30,7 @@ DEPLOYED_TOOL_NAMES = {
     "spotify_top_tracks",
     "spotify_recently_played",
     "spotify_create_playlist",
+    "dj_set",
 }
 
 

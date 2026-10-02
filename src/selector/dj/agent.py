@@ -12,8 +12,10 @@ Critique may send the set back to Select **once**. If the revision also
 fails, the run still returns its best set and notes (useful as a dry run),
 but Commit refuses to write it to Spotify.
 
-Entry points: the `dj_set` MCP tool, and `scripts/dj_cron.py` for the
-shell and scheduled runs.
+Entry points: the `dj_set` MCP tool (both servers: `selector.mcp.server`
+locally, `selector.mcp.dj_tools` hosted), and `scripts/dj_cron.py` for the
+shell and scheduled runs. Nothing here imports scipy or the fly brain, so
+the hosted server can run it on a crate from `selector.dj.crate`.
 """
 
 from __future__ import annotations
@@ -24,13 +26,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+import duckdb
 import pandas as pd
 
 from selector.dj.arc import EnergyArc
 from selector.dj.brief import Brief, build_brief
-from selector.dj.commit import CommitResult, commit, liner_notes, playlist_title
+from selector.dj.commit import CommitResult, PlaylistWriter, commit, liner_notes, playlist_title
+from selector.dj.crate import Crate
 from selector.dj.critique import Verdict, critique, revised_config
-from selector.dj.pool import Crate, recent_plays
 from selector.dj.select import SelectConfig, Selection, select
 from selector.spotify.client import SpotifyClient
 from selector.warehouse.build import DEFAULT_DB_PATH
@@ -69,6 +72,19 @@ class DJRun:
             "errors": self.errors,
             "liner_notes": self.notes,
         }
+
+
+def recent_plays(db_path: Path = DEFAULT_DB_PATH, limit: int = 50) -> pd.DataFrame:
+    """The newest `limit` plays in the warehouse, newest first."""
+    with duckdb.connect(str(db_path), read_only=True) as con:
+        return con.execute(
+            """
+            SELECT ts, track_id, track_name, artist_name, verdict
+            FROM plays WHERE track_id IS NOT NULL
+            ORDER BY ts DESC LIMIT ?
+            """,
+            [limit],
+        ).df()
 
 
 def gather_recent(client: SpotifyClient | None, db_path: Path, limit: int = 50) -> tuple[pd.DataFrame, str]:
@@ -117,6 +133,7 @@ def run_dj(
     db_path: Path = DEFAULT_DB_PATH,
     recent: pd.DataFrame | None = None,
     log_dir: Path | None = DJ_RUNS_DIR,
+    writer: PlaylistWriter | None = None,
 ) -> DJRun:
     now = now or datetime.now().astimezone()
     recent_source = "given"
@@ -148,7 +165,7 @@ def run_dj(
 
     errors: list[str] = []
     try:
-        result = commit(brief, selection, verdict, now, client, dry_run=dry_run)
+        result = commit(brief, selection, verdict, now, client, dry_run=dry_run, writer=writer)
     except Exception as exc:  # noqa: BLE001 - logged with the run, then re-raised below
         errors.append(str(exc))
         result = CommitResult(dry_run=dry_run, title=title, description="")

@@ -15,6 +15,9 @@ also reports whether the old static bearer is still accepted.
 It also checks the remote Spotify tools: a catalogue search through the
 hosted server. `--write` additionally creates a one-track playlist through
 the hosted server, then deletes it again with the local Spotify login.
+
+Last, a 20-minute `dj_set` dry run, which never writes to Spotify: it
+proves the DJ crate downloads from Blob and the five stages run there.
 """
 
 from __future__ import annotations
@@ -85,6 +88,19 @@ def _check_spotify(url: str, headers: dict, names: list[str], write: bool) -> No
         print(f"  deleted {name} again with the local login")
 
 
+def _check_dj(url: str, headers: dict, names: list[str]) -> None:
+    if "dj_set" not in names:
+        print("dj_set listed: NO")
+        return
+    text = _call_tool(url, headers, "dj_set", {"minutes": 20, "dry_run": True})
+    planned = "## Critique chain" in text and "Dry run" in text
+    print(f"dj_set dry run on the hosted crate: {'yes' if planned else 'NO: ' + text[:160]}")
+    if planned:
+        print(f"  {text.splitlines()[0].strip('_')}")
+        if "Planned in UTC" in text or "isn't a known time zone" in text:
+            print("  SELECTOR_TIMEZONE isn't set (or isn't valid) on the deployment")
+
+
 def main() -> None:
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     write = "--write" in sys.argv[1:]
@@ -103,6 +119,10 @@ def main() -> None:
     ) as r:
         size = sum(len(c) for c in r.iter_bytes()) if r.status_code == 200 else 0
     print(f"warehouse blob: HTTP {r.status_code}, {size / 1e6:.1f} MB")
+    crate_url = deploy_data.blob_url(mcp_blob, deploy_data.CRATE_BLOB_PATHNAME)
+    with httpx.stream("GET", crate_url, headers={"authorization": f"Bearer {mcp_blob}"}, timeout=30) as r:
+        size = sum(len(c) for c in r.iter_bytes()) if r.status_code == 200 else 0
+    print(f"DJ crate blob: HTTP {r.status_code}, {size / 1e6:.1f} MB")
 
     url = f"{base}/mcp"
     r = httpx.post(url, headers=HEADERS, json=INIT, timeout=60)
@@ -152,6 +172,7 @@ def _check_tools(url: str, authed: dict, write: bool) -> None:
         first_row = text.splitlines()[2]
         print(f"  day-granular dates: {'yes' if '00:00:00' in first_row else 'NO'}")
     _check_spotify(url, authed, names, write)
+    _check_dj(url, authed, names)
 
 
 if __name__ == "__main__":

@@ -2,13 +2,13 @@
 
 `docs/INSTALL_MCP.md` covers the stdio server for local Claude Code/Desktop
 use. This covers a second, independent entrypoint, `api/index.py`, that
-exposes the warehouse tools and the live Spotify tools, including playlist
-creation, over Streamable HTTP so the server is reachable from anywhere,
-not just this machine.
+exposes the warehouse tools, the live Spotify tools (including playlist
+creation) and the DJ over Streamable HTTP, so the server is reachable from
+anywhere, not just this machine.
 
 ## Scope
 
-The hosted server exposes two sets of tools. `DEPLOY_TOOLS` in
+The hosted server exposes three sets of tools. `DEPLOY_TOOLS` in
 `http_server.py` is the list, and `tests/test_deploy_warehouse.py` fails if
 it changes:
 
@@ -20,14 +20,16 @@ it changes:
   `spotify_top_artists`, `spotify_top_tracks`, `spotify_recently_played`,
   and a guarded `spotify_create_playlist` (see
   [Live Spotify tools](#live-spotify-tools)).
+- **The DJ**, `dj_set`: the same five stages as the local tool, picking
+  with the fly brain, on a precomputed crate (see [The DJ](#the-dj)).
 
 Everything else stays local-only:
 
 - **`reconcile_library`**, which hasn't been checked against the coarse
   deploy warehouse.
-- **Fly-brain and DJ tools** (`more_like_this`, `fly_score`, `dj_set`).
-  They need `data/fly_tags.npz` and train the mushroom body on the per-play
-  history, neither of which is shipped.
+- **The other fly-brain tools** (`more_like_this`, `fly_score`). They read
+  `data/fly_tags.npz` for the whole library and train the mushroom body on
+  the per-play history, neither of which is shipped.
 - **`wrapped_report`**, which writes files next to the warehouse.
 
 ## What data is served
@@ -59,6 +61,17 @@ It is still personal: the hour buckets barely merge anything (about 41k rows
 for 44k plays), so it says roughly what was played in which hour. The
 OAuth login (see [Auth](#auth)) is what keeps it private.
 
+The DJ reads a second file from the same store,
+`data/dj_crate_deploy.parquet` (about 4 MB, built by
+`uv run python -m selector.dj.pool --deploy`). It has one row per playable
+track and only the columns the DJ reads: name, artist, measured tempo and
+energy, duration, predicted mood tags, the fly tag (active Kenyon cells),
+mushroom-body valence and its percentile, and a `familiar` flag (played in
+the 90 days before the warehouse's newest play). It has no timestamps, play
+counts or skip counts, and the write and the upload both refuse a file with
+any other column or any date/time column (`deploy_crate_violations` in
+`selector/dj/crate.py`).
+
 ## Why Redis
 
 The warehouse needs no server-side state: it's about 4MB, read-only, and
@@ -88,6 +101,11 @@ the existing Blob store because it has atomic `SET NX` and `INCR`.
   stdio server binds them to the local token file, the hosted server to
   the Redis store. The hosted `spotify_create_playlist` is its own
   function with the guardrails below.
+- `src/selector/mcp/dj_tools.py`, the hosted `dj_set`. See [The DJ](#the-dj).
+- `src/selector/dj/crate.py`, the crate as data: the `Crate` the DJ stages
+  read, fly tags as plain CSR index arrays with a numpy Hamming distance
+  (so `selector.dj` never imports scipy or the fly brain), and the deploy
+  file's writer, reader and column check.
 - `src/selector/spotify/remote_store.py`, `RedisTokenStore`, the
   encrypted Redis token store, and a minimal Upstash REST client over
   `httpx`.
@@ -238,7 +256,40 @@ so if the two shared one, a refresh on either side could break the other.
 To switch the Spotify tools off, set `SELECTOR_REMOTE_SPOTIFY=off` and
 redeploy, or delete the `spotify:token` key in Redis for an immediate
 stop. To revoke the login entirely, remove the app at spotify.com →
-Account → Apps. That revokes the local login too.
+Account → Apps. That revokes the local login too. Either also stops the
+hosted `dj_set` from writing, though its dry runs keep working.
+
+## The DJ
+
+`dj_set` on the hosted server (`src/selector/mcp/dj_tools.py`) runs the
+same Brief → Arc → Select → Critique → Commit modules as the local tool
+(see `docs/DJ_AGENT.md`). What the local tool builds at startup, the
+hosted one reads from the deploy crate: the fly brain's Kenyon-cell tags
+for coherence and the trained mushroom body's valence for taste. Given the
+same crate, recent plays and clock, both tools pick the same set, down to
+every shortlist score.
+
+How it differs from the local tool:
+
+- **The crate** is downloaded from Blob to `/tmp` by the first `dj_set`
+  call on an instance, not at cold start, so the other tools don't wait on
+  it. The DJ modules are imported on that first call too.
+- **Recent plays** come from the hosted Spotify login, or from the newest
+  hourly buckets of the deploy warehouse if that fails. The answer says
+  which.
+- **The clock.** The Brief picks a theme by local hour and weekday, and
+  Vercel runs in UTC. Set `SELECTOR_TIMEZONE` to an IANA zone name
+  (`America/Chicago`). Without it, the run plans in UTC and says so.
+- **The write** goes through `guarded_create_playlist`, the same function
+  as `spotify_create_playlist`: no `public` flag, the 20-a-day cap, rollback
+  if adding tracks fails, the " · made with Selector" tag and the audit log.
+  The DJ's own gates still come first: `dry_run` must be off and the
+  critique must have passed.
+- **Annotations.** It's marked as a write, so clients that honour
+  annotations ask before running it, even for a dry run.
+- **No run log on disk.** The answer carries the critique chain and the
+  liner notes. `minutes` is limited to 10 to 180, which keeps a run to a
+  few seconds against the 60-second function limit.
 
 ## Deploying
 
@@ -273,6 +324,14 @@ uv run python scripts/setup_mcp_oauth.py      # sets SELECTOR_OWNER_SPOTIFY_ID a
 (`https://selector-mcp.vercel.app/oauth/spotify/callback`) to add as a
 second redirect URI on the Spotify app, next to the loopback one.
 
+For the DJ, also (it needs the fly tags and tagger outputs locally):
+
+```
+uv run python -m selector.dj.pool --deploy               # writes data/dj_crate_deploy.parquet
+uv run python -m selector.mcp.deploy_data upload-crate   # puts it in the Blob store
+vercel env add SELECTOR_TIMEZONE production              # e.g. America/Chicago
+```
+
 The Blob store is separate from the web project's, so neither project's
 token can read the other's private data. `vercel deploy --prod` still
 works for a one-off deploy and produces the same thing, since no data is
@@ -285,8 +344,9 @@ Spotify in the browser.
 `uv run python scripts/check_mcp_deploy.py` checks the OAuth discovery
 endpoints, then calls the server with a five-minute access token it writes
 straight to Redis and deletes afterwards: the warehouse and a Spotify
-search through the hosted token. Add `--write` to also create a
-one-track playlist through the hosted server and delete it again.
+search through the hosted token, and a `dj_set` dry run on the hosted
+crate. Add `--write` to also create a one-track playlist through the
+hosted server and delete it again.
 
 ## Keeping the warehouse current
 
@@ -296,6 +356,8 @@ Data and code are separate. To refresh the data, with no deploy:
 uv run python -m selector.warehouse.build            # after a new export
 uv run python -m selector.warehouse.build --deploy   # the coarse copy
 uv run python -m selector.mcp.deploy_data upload     # overwrites the blob
+uv run python -m selector.dj.pool --deploy           # the DJ's crate, after new tags or audio
+uv run python -m selector.mcp.deploy_data upload-crate
 ```
 
 Running instances keep the copy they downloaded until they're recycled.

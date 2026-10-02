@@ -292,6 +292,49 @@ def _audit(redis, playlist: dict, name: str, n_tracks: int) -> None:
         pass  # the playlist exists either way; a missed log line isn't worth failing the call
 
 
+class PlaylistRefused(RuntimeError):
+    """A remote playlist write that was refused or undone. The message is
+    shown to the model as is."""
+
+
+def guarded_create_playlist(client: SpotifyClient, name: str, description: str, uris: list[str]) -> dict:
+    """Every remote playlist write goes through here, `spotify_create_playlist`
+    and the hosted `dj_set` alike: input checks, the daily cap, create then
+    add (deleting the playlist again if the add fails), the description tag
+    and the audit log. Returns the created playlist; raises `PlaylistRefused`."""
+    name = name.strip()
+    problem = _check_playlist_request(name, uris)
+    if problem:
+        raise PlaylistRefused(problem)
+
+    redis = client.store.redis
+    day = datetime.now(UTC).strftime("%Y-%m-%d")
+    key = PLAYLIST_COUNT_KEY.format(day=day)
+    count = int(redis.command("INCR", key))
+    if count == 1:
+        redis.command("EXPIRE", key, 2 * 86_400)
+    if count > MAX_REMOTE_PLAYLISTS_PER_DAY:
+        raise PlaylistRefused(
+            f"Refused: the hosted server has already created {MAX_REMOTE_PLAYLISTS_PER_DAY} "
+            "playlists today (UTC). Try again tomorrow, or use the local Selector server."
+        )
+
+    playlist = client.create_playlist(name, description=_tagged_description(description), public=False)
+    if uris:
+        try:
+            client.add_tracks_to_playlist(playlist["id"], uris)
+        except (SpotifyAPIError, SpotifyAuthError, httpx.HTTPError) as exc:
+            try:
+                client.unfollow_playlist(playlist["id"])
+                cleanup = "The empty playlist was deleted again."
+            except (SpotifyAPIError, SpotifyAuthError, httpx.HTTPError):
+                cleanup = f"Deleting the empty playlist also failed; remove it by hand: {_playlist_url(playlist)}"
+            raise PlaylistRefused(f"Created the playlist but adding its tracks failed ({exc}). {cleanup}") from exc
+
+    _audit(redis, playlist, name, len(uris))
+    return playlist
+
+
 def spotify_create_playlist(
     name: str,
     description: str = "",
@@ -308,41 +351,20 @@ def spotify_create_playlist(
     """
     name = name.strip()
     uris = list(track_uris or [])
+    # Checked here too, so a bad request never even builds a client.
     problem = _check_playlist_request(name, uris)
     if problem:
         return problem
 
     def _call(client: SpotifyClient) -> str:
-        redis = client.store.redis
-        day = datetime.now(UTC).strftime("%Y-%m-%d")
-        key = PLAYLIST_COUNT_KEY.format(day=day)
-        count = int(redis.command("INCR", key))
-        if count == 1:
-            redis.command("EXPIRE", key, 2 * 86_400)
-        if count > MAX_REMOTE_PLAYLISTS_PER_DAY:
-            return (
-                f"Refused: the hosted server has already created {MAX_REMOTE_PLAYLISTS_PER_DAY} "
-                "playlists today (UTC). Try again tomorrow, or use the local Selector server."
-            )
-
-        playlist = client.create_playlist(name, description=_tagged_description(description), public=False)
-        url = _playlist_url(playlist)
-        if uris:
-            try:
-                client.add_tracks_to_playlist(playlist["id"], uris)
-            except (SpotifyAPIError, SpotifyAuthError, httpx.HTTPError) as exc:
-                try:
-                    client.unfollow_playlist(playlist["id"])
-                    cleanup = "The empty playlist was deleted again."
-                except (SpotifyAPIError, SpotifyAuthError, httpx.HTTPError):
-                    cleanup = f"Deleting the empty playlist also failed; remove it by hand: {url}"
-                return f"Created the playlist but adding its tracks failed ({exc}). {cleanup}"
-
-        _audit(redis, playlist, name, len(uris))
+        try:
+            playlist = guarded_create_playlist(client, name, description, uris)
+        except PlaylistRefused as exc:
+            return str(exc)
         n = len(uris)
         return (
             f"Created playlist **{playlist.get('name', name)}** "
-            f"with {n} track{'s' if n != 1 else ''}. Open it: {url}"
+            f"with {n} track{'s' if n != 1 else ''}. Open it: {_playlist_url(playlist)}"
         )
 
     return run_spotify(_remote, _call)

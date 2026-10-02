@@ -7,7 +7,12 @@
 mcp>=2.2.0
 duckdb>=1.1
 pandas>=2.2
+# Already installed by pandas; listed because the hosted DJ imports it directly.
+numpy
 pyarrow>=17.0
+# IANA time zones for SELECTOR_TIMEZONE (the hosted dj_set), in case the
+# runtime image has no system zoneinfo.
+tzdata
 httpx>=0.27
 # Encrypts the Spotify token at rest (selector.spotify.remote_store).
 cryptography>=43

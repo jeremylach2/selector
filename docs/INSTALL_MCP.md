@@ -114,7 +114,9 @@ skip/play-out history. Both accept a `track_id` or a name substring.
 themed set through Brief → Arc → Select → Critique → Commit and returns the
 critique chain plus liner notes. It is a dry run unless `dry_run=False` is
 passed explicitly, and it never writes a set that failed critique. See
-`docs/DJ_AGENT.md`.
+`docs/DJ_AGENT.md`. It's on the hosted server too, running on an uploaded
+copy of the crate, with the hosted playlist guardrails (see
+`docs/DEPLOY_MCP.md#the-dj`).
 
 Every tool returns a markdown table (or a short status message for the
 write-actions), capped at 40 rows with a "… N more rows" note when

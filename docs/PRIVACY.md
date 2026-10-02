@@ -83,11 +83,19 @@ Vercel.
   Plays are reduced to counts per UTC day, hour and track. There are no
   exact timestamps, sessions, platforms, countries or reason codes, and the
   build refuses to write a file with any time column left.
-- **Tools:** the nine read-only warehouse tools and the live Spotify tools
+  For the DJ it also ships `data/dj_crate_deploy.parquet`
+  (`python -m selector.dj.pool --deploy`): per playable track, the name,
+  artist, measured tempo and energy, duration, predicted mood tags, fly tag,
+  mushroom-body taste score and a played-in-the-last-90-days flag. It has
+  no timestamps or play counts, and the write and the upload both refuse
+  any other column.
+- **Tools:** the nine read-only warehouse tools, the live Spotify tools
   (search, saved tracks, top items, recently played, and a guarded
-  playlist creation). Spotify results are passed through to the caller and
-  never stored. The fly-brain, DJ, Rewind and `reconcile_library` tools
-  are local-only.
+  playlist creation), and `dj_set`, whose writes go through the same
+  guarded playlist creation. Spotify results are passed through to the
+  caller and never stored. Recently played tracks steer the DJ's brief for
+  that one call only. `more_like_this`, `fly_score`, Rewind and
+  `reconcile_library` are local-only.
 - **Spotify login:** its own grant with narrower scopes, kept in Upstash
   Redis encrypted under `SELECTOR_TOKEN_KEY`. Redis also holds the daily
   playlist counter and a log of playlists created (time, id, name, track
@@ -103,7 +111,8 @@ Vercel.
   deployment. `.vercelignore` is an allowlist (`api/`, `src/`,
   `requirements.txt`, `vercel.json`), so env files, private reports and
   `data/` never reach Vercel. The upload refuses any file with per-play
-  tables or time columns.
+  tables or time columns. The DJ crate sits in the same store and is
+  downloaded on the first `dj_set` call.
 - **Static bearer (retired):** the old shared `SELECTOR_MCP_TOKEN` is no
   longer set, so the only way in is the Spotify login.
 

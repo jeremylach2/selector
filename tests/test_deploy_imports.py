@@ -86,15 +86,22 @@ def test_the_deployment_never_reaches_heavy_or_local_only_code():
     reached, _ = _walk()
     assert "selector.mcp.http_server" in reached
     assert "selector.spotify.remote_store" in reached
+    # The hosted DJ runs the agent on a precomputed crate, never the
+    # pipeline that builds one.
+    assert {"selector.mcp.dj_tools", "selector.dj.agent", "selector.dj.crate"} <= reached
     local_only = (
         "selector.mcp.server",
         "selector.fly",
         "selector.spotify.reconcile",
-        "selector.dj",
+        "selector.dj.pool",
         "selector.tagger",
     )
+    # The tagger's schema is plain pydantic and holds the mood vocabulary
+    # the Brief scores themes with.
+    allowed = {"selector.tagger", "selector.tagger.schema"}
     for forbidden in local_only:
-        assert not [m for m in reached if m == forbidden or m.startswith(forbidden + ".")], forbidden
+        hits = [m for m in reached if (m == forbidden or m.startswith(forbidden + ".")) and m not in allowed]
+        assert not hits, hits
 
 
 def test_importing_the_entrypoint_loads_nothing_heavy(tmp_path):
@@ -103,7 +110,8 @@ def test_importing_the_entrypoint_loads_nothing_heavy(tmp_path):
     code = (
         "import runpy, sys; runpy.run_path(sys.argv[1]); "
         "bad = sorted(m for m in sys.modules if m.split('.')[0] in "
-        "{'scipy', 'torch', 'sklearn', 'librosa'} or m.startswith(('selector.fly', 'selector.spotify.reconcile'))); "
+        "{'scipy', 'torch', 'sklearn', 'librosa'} or "
+        "m.startswith(('selector.fly', 'selector.spotify.reconcile', 'selector.dj.pool'))); "
         "print(bad); sys.exit(1 if bad else 0)"
     )
     env_db = str(tmp_path / "none.duckdb")

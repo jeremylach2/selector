@@ -12,6 +12,11 @@ downloads it from the project's private Blob store into `/tmp`
 (`selector.mcp.deploy_data`). Set here rather than in `http_server.py` so
 importing that module in tests or local `uvicorn` runs doesn't redirect
 the stdio server's default too.
+
+The DJ's crate comes from the same store but isn't fetched here: the
+hosted `dj_set` downloads it to `SELECTOR_DJ_CRATE` on its first call
+(`selector.mcp.dj_tools`), so cold starts for the other tools don't wait
+on it.
 """
 
 import logging
@@ -24,7 +29,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from selector.mcp import deploy_data
 
 WAREHOUSE = Path("/tmp/selector_deploy.duckdb")
+DJ_CRATE = Path("/tmp/selector_dj_crate.parquet")
 log = logging.getLogger(__name__)
+
+os.environ.setdefault("SELECTOR_DJ_CRATE", str(DJ_CRATE))
 
 if "SELECTOR_DB" not in os.environ:
     os.environ["SELECTOR_DB"] = str(WAREHOUSE)

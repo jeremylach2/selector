@@ -40,7 +40,6 @@ from collections import Counter
 from dataclasses import asdict, dataclass, field
 
 import numpy as np
-from scipy import sparse
 
 from selector.dj.arc import (
     COMBINED_ENERGY_STEP,
@@ -53,8 +52,7 @@ from selector.dj.arc import (
     tempo_shift,
 )
 from selector.dj.brief import Brief
-from selector.dj.pool import Crate
-from selector.fly.lsh import hamming_distances
+from selector.dj.crate import Crate
 
 # Band widening steps, as multiples of the arc's tolerance, tried in order
 # only when no candidate fits the band at the current width.
@@ -155,8 +153,8 @@ def select(
     tracks = crate.tracks
     n = len(tracks)
 
-    tags = sparse.csr_matrix(crate.tags[tracks["tag_row"].to_numpy()])
-    popcount = np.asarray(tags.sum(axis=1)).ravel()
+    tags = crate.tags.take(tracks["tag_row"].to_numpy())
+    popcount = tags.popcount
     energy = tracks["energy"].to_numpy(dtype=float)
     tempo = tracks["tempo"].to_numpy(dtype=float)
     duration_s = tracks["duration_ms"].to_numpy(dtype=float) / 1000
@@ -173,7 +171,7 @@ def select(
     seed_rows = [row_of[s] for s in brief.seed_track_ids if s in row_of]
     seed_sim = np.zeros(n)
     for r in seed_rows:
-        seed_sim += _dice(hamming_distances(tags[r], tags), popcount, popcount[r])
+        seed_sim += _dice(tags.hamming(r), popcount, popcount[r])
     if seed_rows:
         seed_sim /= len(seed_rows)
 
@@ -202,7 +200,7 @@ def select(
             smooth = np.ones(n, dtype=bool)
             prev_dist = None
         else:
-            prev_dist = hamming_distances(tags[prev], tags)
+            prev_dist = tags.hamming(prev)
             prev_sim = _dice(prev_dist, popcount, popcount[prev])
             coherence_raw = 0.5 * prev_sim + 0.5 * seed_sim if seed_rows else prev_sim
             shifts = np.array([tempo_shift(tempo[prev], b) for b in tempo], dtype=float)

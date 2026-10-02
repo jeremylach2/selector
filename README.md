@@ -92,11 +92,14 @@ Then ask Claude Code something like *"what did I binge in March and then abandon
 
 Both extras below are optional and single-user. They need a free Vercel account, and the hosted server also needs a Spotify developer app and an Upstash Redis store from the Vercel Marketplace.
 
-**Hosted MCP server.** `api/index.py` serves the warehouse tools and the live Spotify tools (including a guarded `spotify_create_playlist`) over Streamable HTTP, so claude.ai or any MCP client can reach your data from anywhere. It is its own OAuth server with Spotify as the login, and only your Spotify account gets a token. Only a coarse copy of the warehouse is served (hourly buckets, no timestamps), downloaded from a private Vercel Blob store on cold start, so no personal data is in git or in the deployment. Build and upload it with:
+**Hosted MCP server.** `api/index.py` serves the warehouse tools, the live Spotify tools (including a guarded `spotify_create_playlist`) and the DJ (`dj_set`) over Streamable HTTP, so claude.ai or any MCP client can reach your data from anywhere. It is its own OAuth server with Spotify as the login, and only your Spotify account gets a token. Only a coarse copy of the warehouse is served (hourly buckets, no timestamps), downloaded from a private Vercel Blob store on cold start, so no personal data is in git or in the deployment. Build and upload it with:
 
 ```bash
 uv run python -m selector.warehouse.build --deploy
 uv run python -m selector.mcp.deploy_data upload
+# the DJ's crate, if you've built the fly tags
+uv run python -m selector.dj.pool --deploy
+uv run python -m selector.mcp.deploy_data upload-crate
 ```
 
 Then link a Vercel project, add the Blob and Upstash stores, and run `scripts/setup_remote_spotify.py`, `scripts/seed_remote_spotify_token.py` and `scripts/setup_mcp_oauth.py` in that order. [docs/DEPLOY_MCP.md](docs/DEPLOY_MCP.md) has every command, the auth flow and the playlist guardrails. The `selector-mcp.vercel.app` URL in the code and docs is mine, so use your own project's URL.

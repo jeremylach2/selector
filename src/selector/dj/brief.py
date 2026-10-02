@@ -16,12 +16,18 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from typing import get_args
 
 import numpy as np
 import pandas as pd
 
-from selector.dj.pool import Crate
-from selector.fly.pipeline import MOOD_VOCAB
+from selector.dj.crate import Crate
+from selector.tagger.schema import MoodTag
+
+# The tagger's mood vocabulary, in the same order as the fly's feature
+# vector (`selector.fly.pipeline.MOOD_VOCAB`), read from the schema so the
+# hosted server doesn't import the fly brain to get it.
+MOOD_VOCAB = list(get_args(MoodTag))
 
 
 @dataclass(frozen=True)

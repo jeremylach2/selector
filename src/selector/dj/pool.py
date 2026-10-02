@@ -13,19 +13,26 @@ three provenances, and the column names keep them apart:
 - learned (fly brain): `tag_row` into the fly tag matrix,
   `fly_valence` from the production mushroom body
 - observed (the warehouse): play counts, recency, durations
+
+Building one needs scipy, the fly brain and the full per-play history, so
+it only runs locally. `--deploy` writes the finished crate for the hosted
+server (see `selector.dj.crate`):
+
+    uv run python -m selector.dj.pool --deploy
+    uv run python -m selector.mcp.deploy_data upload-crate
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+import argparse
+from datetime import timedelta
 from pathlib import Path
 
 import duckdb
 import numpy as np
 import pandas as pd
-from scipy import sparse
 
+from selector.dj.crate import DEFAULT_DEPLOY_CRATE_PATH, Crate, save_deploy_crate
 from selector.fly import pipeline as fly_pipeline
 from selector.warehouse.build import DEFAULT_DB_PATH
 
@@ -60,18 +67,7 @@ MAX_DURATION_MS = 600_000
 # of the ratio is "not heard lately", i.e. rediscovery, not literally new.
 FAMILIAR_WINDOW_DAYS = 90
 
-
-@dataclass
-class Crate:
-    """`tracks` is one row per playable track (see module docstring for the
-    columns); `tags` is the full fly tag matrix, indexed by `tracks.tag_row`."""
-
-    tracks: pd.DataFrame
-    tags: sparse.csr_matrix
-    as_of: datetime
-
-    def by_id(self) -> pd.DataFrame:
-        return self.tracks.set_index("track_id", drop=False)
+__all__ = ["Crate", "build_crate", "measured_energy"]
 
 
 def measured_energy(audio: pd.DataFrame) -> pd.Series:
@@ -140,14 +136,18 @@ def build_crate(
     return Crate(tracks=crate.reset_index(drop=True), tags=tags, as_of=as_of)
 
 
-def recent_plays(db_path: Path = DEFAULT_DB_PATH, limit: int = 50) -> pd.DataFrame:
-    """The newest `limit` plays in the warehouse, newest first."""
-    with duckdb.connect(str(db_path), read_only=True) as con:
-        return con.execute(
-            """
-            SELECT ts, track_id, track_name, artist_name, verdict
-            FROM plays WHERE track_id IS NOT NULL
-            ORDER BY ts DESC LIMIT ?
-            """,
-            [limit],
-        ).df()
+def main(argv: list[str] | None = None) -> None:
+    parser = argparse.ArgumentParser(description="Build the DJ's crate.")
+    parser.add_argument("--deploy", action="store_true", help="write the crate for the hosted MCP server")
+    parser.add_argument("--db-path", type=Path, default=DEFAULT_DB_PATH)
+    parser.add_argument("--output", type=Path, default=DEFAULT_DEPLOY_CRATE_PATH)
+    args = parser.parse_args(argv)
+    crate = build_crate(db_path=args.db_path)
+    print(f"crate: {len(crate.tracks)} tracks, as of {crate.as_of:%Y-%m-%d}")
+    if args.deploy:
+        path = save_deploy_crate(crate, args.output)
+        print(f"wrote {path} ({path.stat().st_size / 1e6:.1f} MB)")
+
+
+if __name__ == "__main__":
+    main()

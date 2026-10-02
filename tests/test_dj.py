@@ -255,6 +255,24 @@ def test_commit_writes_private_playlist_with_track_uris():
     assert r.playlist_url.endswith("pl1")
 
 
+def test_commit_uses_the_given_writer_after_both_gates():
+    crate = _crate()
+    b, s, v = _passed_run(crate)
+    written = []
+
+    def writer(title, description, uris):
+        written.append((title, description, uris))
+        return {"id": "pl2", "external_urls": {"spotify": "https://open.spotify.com/playlist/pl2"}}
+
+    v.passed = True
+    r = commit_mod.commit(b, s, v, _at(2026, 9, 23), None, dry_run=False, writer=writer)
+    assert r.playlist_id == "pl2" and written[0][2] == [f"spotify:track:{t}" for t in s.track_ids]
+    v.passed = False
+    with pytest.raises(commit_mod.CommitRefused):
+        commit_mod.commit(b, s, v, _at(2026, 9, 23), None, dry_run=False, writer=writer)
+    assert len(written) == 1
+
+
 def test_liner_notes_cite_measured_tempo_and_energy():
     a = _pick(0, 0.40, 120.0, 0.4, "build")
     b = _pick(1, 0.55, 121.0, 0.55, "peak")

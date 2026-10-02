@@ -9,10 +9,17 @@ the mushroom body predicts approach).
 The playlist write is gated twice: `dry_run` must be off, and the critique
 verdict must have passed. A set that failed critique twice is never
 committed, whatever the caller asks for.
+
+The write itself is a `PlaylistWriter`, by default a plain
+`SpotifyClient.create_playlist`. The hosted server passes its guarded one
+instead (`selector.mcp.spotify_tools.guarded_create_playlist`), so a DJ set
+written from there gets the same daily cap, rollback and audit log as any
+other remote playlist, and both gates above still apply.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -29,6 +36,10 @@ MAX_DESCRIPTION_CHARS = 300
 # pairwise Hamming distance is ~186 and the 5th percentile ~114. Under this
 # counts as a genuine fly-brain neighbour.
 CLOSE_HAMMING = 120
+
+# (title, description, track URIs) -> the created playlist, as the Web API
+# returns it.
+PlaylistWriter = Callable[[str, str, list[str]], dict]
 
 
 class CommitRefused(RuntimeError):
@@ -152,6 +163,7 @@ def commit(
     now: datetime,
     client: SpotifyClient | None,
     dry_run: bool = True,
+    writer: PlaylistWriter | None = None,
 ) -> CommitResult:
     title = playlist_title(brief, now)
     description = playlist_description(brief)
@@ -159,11 +171,15 @@ def commit(
         return CommitResult(dry_run=True, title=title, description=description)
     if not verdict.passed:
         raise CommitRefused(f"Critique did not pass, so nothing was written to Spotify. {verdict.summary}")
-    if client is None:
-        raise CommitRefused("No Spotify client configured (SPOTIFY_CLIENT_ID unset).")
+    if writer is None:
+        if client is None:
+            raise CommitRefused("No Spotify client configured (SPOTIFY_CLIENT_ID unset).")
+
+        def writer(name: str, text: str, uris: list[str]) -> dict:
+            return client.create_playlist(name, description=text, public=False, track_uris=uris)
 
     uris = [f"spotify:track:{tid}" for tid in selection.track_ids]
-    playlist = client.create_playlist(title, description=description, public=False, track_uris=uris)
+    playlist = writer(title, description, uris)
     return CommitResult(
         dry_run=False,
         title=title,
