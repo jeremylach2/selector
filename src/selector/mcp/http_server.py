@@ -3,7 +3,7 @@
 `server.py` defines every tool and stays stdio-only for local Claude Code /
 Desktop use per `docs/INSTALL_MCP.md`. This module registers the read-only
 warehouse tools (`warehouse_tools.WAREHOUSE_TOOLS`), the remote Spotify
-tools (`spotify_tools.REMOTE_SPOTIFY_TOOLS`: five reads plus a guarded
+tools (`spotify_tools.REMOTE_SPOTIFY_TOOLS`: five reads, `resolve_tracks` and a guarded
 `spotify_create_playlist`) and the hosted DJ (`dj_tools.dj_set`) on its own
 `deploy_server`, and exposes it as a plain ASGI `app`, suitable for a
 Vercel Python function or any other ASGI host. The warehouse and Spotify
@@ -12,9 +12,10 @@ between the two transports. See `docs/DEPLOY_MCP.md`.
 
 It deliberately never imports `server.py`, which pulls in scipy. The DJ
 runs here on a precomputed crate (`selector.dj.crate`) rather than one
-built by the fly pipeline. `more_like_this` and `fly_score` stay local, as
-does `reconcile_library` (it needs the full warehouse) and `wrapped_report`
-(it writes to disk). The Spotify tools read their token from Redis rather
+built by the fly pipeline, and so do `more_like_this`, `fly_score` and
+`order_tracks` (`crate_tools.CRATE_TOOLS`), covering the tracks with
+measured audio. `reconcile_library` stays local (it needs the full
+warehouse), as does `wrapped_report` (it writes to disk). The Spotify tools read their token from Redis rather
 than running a browser login (see `selector.spotify.remote_store`).
 
 Auth is MCP OAuth with Spotify as the login (`selector.mcp.oauth`): only
@@ -45,12 +46,18 @@ from starlette.responses import PlainTextResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 from selector.mcp import oauth
+from selector.mcp.crate_tools import CRATE_TOOLS
 from selector.mcp.dj_tools import dj_set
-from selector.mcp.spotify_tools import REMOTE_SPOTIFY_TOOLS, WRITE_ANNOTATIONS, add_spotify_tools
+from selector.mcp.spotify_tools import (
+    READ_ANNOTATIONS,
+    REMOTE_SPOTIFY_TOOLS,
+    WRITE_ANNOTATIONS,
+    add_spotify_tools,
+)
 from selector.mcp.warehouse_tools import INSTRUCTIONS, WAREHOUSE_TOOLS
 from selector.spotify.remote_store import RemoteStoreNotConfigured
 
-DEPLOY_TOOLS = (*WAREHOUSE_TOOLS, *REMOTE_SPOTIFY_TOOLS, dj_set)
+DEPLOY_TOOLS = (*WAREHOUSE_TOOLS, *REMOTE_SPOTIFY_TOOLS, dj_set, *CRATE_TOOLS)
 
 # Local `uvicorn` testing only. Never set on Vercel.
 ALLOW_NO_AUTH_ENV_VAR = "SELECTOR_MCP_ALLOW_NO_AUTH"
@@ -77,6 +84,8 @@ def build_server(provider: oauth.SpotifyOAuthProvider | None = None) -> MCPServe
     add_spotify_tools(server, REMOTE_SPOTIFY_TOOLS)
     # A write whenever `dry_run` is off, so clients that honour annotations ask first.
     server.add_tool(dj_set, annotations=WRITE_ANNOTATIONS)
+    for tool in CRATE_TOOLS:
+        server.add_tool(tool, annotations=READ_ANNOTATIONS)
     if provider is not None:
         server.custom_route(oauth.CALLBACK_PATH, methods=["GET"])(provider.handle_spotify_callback)
     return server

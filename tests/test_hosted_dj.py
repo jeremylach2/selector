@@ -225,4 +225,67 @@ def test_hosted_dj_set_is_marked_as_a_write():
     tools = {t.name: t for t in asyncio.run(http_server.deploy_server.list_tools())}
     tool = tools["dj_set"]
     assert tool.annotations.read_only_hint is False
-    assert set(tool.input_schema["properties"]) == {"theme", "minutes", "dry_run", "familiar_ratio"}
+    assert set(tool.input_schema["properties"]) == {
+        "theme", "minutes", "dry_run", "familiar_ratio", "seed_tracks", "exclude_tracks", "exclude_artists",
+    }
+
+
+# -- hosted fly tools ---------------------------------------------------------
+
+
+def test_more_like_this_returns_the_nearest_fingerprints(hosted):
+    from selector.mcp import crate_tools
+
+    crate = dj_tools._load_crate(dj_tools._crate_path())
+    seed = crate.tracks["track_id"].iat[3]
+    out = crate_tools.more_like_this(seed, k=5)
+    assert out.startswith(f"Nearest to **{crate.tracks['name'].iat[3]}**")
+    assert f"| {crate.tracks['name'].iat[3]} |" not in out
+    # `KCTags.hamming` is checked against the fly brain's own distances above.
+    shown = [int(line.rsplit("|", 2)[1]) for line in out.splitlines() if line.startswith("| Song")]
+    assert shown == [int(d) for d in sorted(crate.tags.hamming(3))[1:6]]
+
+
+def test_fly_score_reports_the_rank(hosted):
+    from selector.mcp import crate_tools
+
+    crate = dj_tools._load_crate(dj_tools._crate_path())
+    best = crate.tracks.sort_values("fly_valence").iloc[-1]
+    out = crate_tools.fly_score(f"spotify:track:{best['track_id']}")
+    assert f"**{best['name']}** by {best['artist']}" in out
+    assert f"ranked 1 of the {len(crate.tracks):,} tracks" in out
+
+
+def test_tracks_outside_the_crate_get_a_message(hosted, warehouses, monkeypatch):
+    from selector.mcp import crate_tools
+
+    monkeypatch.setenv("SELECTOR_DB", str(warehouses[1]))
+    out = crate_tools.more_like_this("Song t1")
+    assert out.startswith('"Song t1" by Alpha isn\'t in the hosted crate')
+    assert crate_tools.fly_score("zzz-no-such-track").startswith("No track matches")
+
+
+def test_hosted_order_tracks(hosted):
+    from selector.mcp import crate_tools
+
+    crate = dj_tools._load_crate(dj_tools._crate_path())
+    ids = list(crate.tracks["track_id"].head(8))
+    out = crate_tools.order_tracks([f"spotify:track:{t}" for t in ids])
+    uris = json.loads(out.rsplit("\n", 1)[-1])
+    assert sorted(uris) == sorted(f"spotify:track:{t}" for t in ids)
+    assert crate_tools.order_tracks(ids[:1]).startswith("Refused")
+
+
+def test_tie_note_counts_ties_and_never_the_seed():
+    from selector.mcp.crate_tools import tie_note
+
+    distances = np.array([0, 0, 0, 4, 4, 9])
+    note = tie_note(distances, [0, 0, 4])
+    assert "2 tracks tie at distance 0" in note and "distance 4" not in note
+    assert tie_note(distances, [4, 9]) == ""
+
+
+def test_hosted_fly_tools_are_read_only():
+    tools = {t.name: t for t in asyncio.run(http_server.deploy_server.list_tools())}
+    for name in ("more_like_this", "fly_score", "order_tracks", "resolve_tracks"):
+        assert tools[name].annotations.read_only_hint is True

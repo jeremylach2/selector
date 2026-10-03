@@ -122,6 +122,28 @@ def write_log(run: DJRun, now: datetime, log_dir: Path = DJ_RUNS_DIR) -> Path:
     return path
 
 
+def track_id_of(value: str) -> str:
+    """A bare track ID from an ID or a `spotify:track:` URI."""
+    return value.strip().removeprefix("spotify:track:")
+
+
+def requested_exclusions(
+    crate: Crate, track_ids: list[str] | None, artists: list[str] | None
+) -> tuple[set[str], list[str]]:
+    """Crate track IDs to leave out of the set: the given tracks, plus every
+    track by the given artists (case-insensitive exact name). Also returns
+    the artists that matched nothing in the crate, so the caller can say so."""
+    exclude = {track_id_of(t) for t in track_ids or [] if t.strip()}
+    wanted = {a.strip().casefold(): a.strip() for a in artists or [] if a.strip()}
+    if not wanted:
+        return exclude, []
+    folded = crate.tracks["artist"].str.casefold()
+    hit = folded.isin(wanted.keys())
+    exclude |= set(crate.tracks.loc[hit, "track_id"])
+    present = set(folded[hit])
+    return exclude, [name for key, name in wanted.items() if key not in present]
+
+
 def run_dj(
     crate: Crate,
     theme: str | None = None,
@@ -134,21 +156,30 @@ def run_dj(
     recent: pd.DataFrame | None = None,
     log_dir: Path | None = DJ_RUNS_DIR,
     writer: PlaylistWriter | None = None,
+    seed_track_ids: list[str] | None = None,
+    exclude_track_ids: list[str] | None = None,
+    exclude_artists: list[str] | None = None,
 ) -> DJRun:
     now = now or datetime.now().astimezone()
     recent_source = "given"
     if recent is None:
         recent, recent_source = gather_recent(client, db_path)
 
-    brief = build_brief(recent, crate, now, requested_theme=theme)
+    exclude, unmatched_artists = requested_exclusions(crate, exclude_track_ids, exclude_artists)
+    seeds = [track_id_of(t) for t in seed_track_ids or [] if t.strip()]
+    brief = build_brief(recent, crate, now, requested_theme=theme, seed_track_ids=seeds, exclude=frozenset(exclude))
+    n_out = int(crate.tracks["track_id"].isin(exclude).sum())
+    if n_out:
+        brief.rationale += f" Left out {n_out} track{'s' if n_out != 1 else ''} by request."
+    if unmatched_artists:
+        brief.rationale += f" No crate tracks by {', '.join(unmatched_artists)} to leave out."
     arc = EnergyArc.for_theme(brief.theme, minutes)
 
     config = SelectConfig(familiar_ratio=familiar_ratio)
-    selection = select(crate, brief, arc, config)
+    selection = select(crate, brief, arc, config, exclude=exclude)
     verdict = critique(selection, arc)
     attempts = [(selection, verdict)]
 
-    exclude: set[str] = set()
     for _ in range(MAX_REVISIONS):
         if verdict.passed:
             break

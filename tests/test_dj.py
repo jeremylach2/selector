@@ -325,3 +325,42 @@ def test_measured_energy_is_rank_normalised():
 def test_every_named_theme_resolves_to_itself():
     for theme in THEMES:
         assert resolve_theme(theme.name) is theme
+
+
+# -- steering -------------------------------------------------------------------
+
+
+def _steered(crate, **kwargs):
+    return agent.run_dj(
+        crate, theme="golden hour", minutes=30, recent=_recent(crate),
+        now=_at(2026, 9, 23, 17, 0), log_dir=None, **kwargs,
+    )
+
+
+def test_excluded_artists_and_tracks_are_never_played():
+    crate = _crate()
+    plain = _steered(crate).final[0]
+    banned_artist, banned_track = plain.picks[0].artist, plain.picks[1].track_id
+    run = _steered(
+        crate, exclude_artists=[banned_artist.upper(), "Nobody"], exclude_track_ids=[f"spotify:track:{banned_track}"]
+    )
+    for selection, _ in run.attempts:
+        assert banned_artist not in {p.artist for p in selection.picks}
+        assert banned_track not in selection.track_ids
+    by_id = crate.by_id()
+    assert banned_artist not in {by_id.loc[t, "artist"] for t in run.brief.seed_track_ids}
+    assert "Left out" in run.brief.rationale and "No crate tracks by Nobody" in run.brief.rationale
+
+
+def test_requested_seeds_replace_recent_listening():
+    crate = _crate()
+    run = _steered(crate, seed_track_ids=["t50", "spotify:track:t51", "not-in-crate"])
+    assert run.brief.seed_track_ids == ["t50", "t51"]
+    assert "Steered towards 2 requested seed tracks (1 not in the crate or excluded, ignored)" in run.brief.rationale
+
+
+def test_unusable_seeds_fall_back_to_recent_listening():
+    crate = _crate()
+    run = _steered(crate, seed_track_ids=["nope"])
+    assert run.brief.seed_track_ids == _steered(crate).brief.seed_track_ids
+    assert "None of the 1 requested seed tracks" in run.brief.rationale

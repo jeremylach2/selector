@@ -21,15 +21,18 @@ from __future__ import annotations
 import json
 import os
 import re
+from collections import Counter
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
+from pathlib import Path
 
 import httpx
 import pandas as pd
 from mcp.server.mcpserver import MCPServer
 from mcp.types import ToolAnnotations
 
-from selector.mcp.warehouse_tools import _df_to_markdown
+from selector.mcp.warehouse_tools import _db_path, _df_to_markdown
+from selector.spotify import resolve as track_resolve
 from selector.spotify.auth import SpotifyAuthError
 from selector.spotify.client import SpotifyAPIError, SpotifyClient
 from selector.spotify.remote_store import RedisError, RedisTokenStore, RemoteStoreNotConfigured
@@ -158,8 +161,9 @@ def _playlist_url(playlist: dict) -> str:
 
 
 def make_read_tools(get_client: Callable[[], SpotifyClient]) -> tuple[Callable[..., str], ...]:
-    """The five read-only tools, bound to one client factory. Each
-    transport calls this once, so the definitions never drift."""
+    """The five Spotify reads plus `resolve_tracks`, bound to one client
+    factory. Each transport calls this once, so the definitions never
+    drift."""
 
     def spotify_search(query: str, item_type: str = "track", limit: int = 10) -> str:
         """Search Spotify's full catalogue (not just this person's library) for
@@ -250,7 +254,105 @@ def make_read_tools(get_client: Callable[[], SpotifyClient]) -> tuple[Callable[.
         spotify_top_artists,
         spotify_top_tracks,
         spotify_recently_played,
+        make_resolve_tool(get_client),
     )
+
+
+# -- batch resolution -------------------------------------------------------
+
+MAX_RESOLVE_ITEMS = 50
+_library_cache: tuple[Path, float, track_resolve.Library] | None = None
+
+
+def _library() -> tuple[track_resolve.Library | None, str | None]:
+    """The warehouse's tracks for matching, cached until the file changes,
+    or a note on why there are none."""
+    global _library_cache
+    path = _db_path()
+    if not path.exists():
+        return None, "No listening-history warehouse here, so nothing was matched from the library."
+    mtime = path.stat().st_mtime
+    if _library_cache is None or _library_cache[:2] != (path, mtime):
+        _library_cache = (path, mtime, track_resolve.Library.load(path))
+    return _library_cache[2], None
+
+
+def _resolution_report(results: list[track_resolve.Resolution], notes: list[str]) -> str:
+    counts = Counter(r.status for r in results)
+    sources = Counter(r.source for r in results if r.status == track_resolve.MATCHED)
+    order = (track_resolve.MATCHED, track_resolve.GUESS, track_resolve.MISSED, track_resolve.ERROR)
+    head = ", ".join(f"{counts[s]} {s}" for s in order if counts[s])
+    if sources:
+        head += " (matched: " + ", ".join(f"{n} from the {src}" for src, n in sources.items()) + ")"
+
+    rows = [
+        {
+            "#": i + 1,
+            "query": r.query,
+            "status": r.status,
+            "match": f"{r.name} - {r.artist}" if r.name else "",
+            "from": r.source,
+            "confidence": r.confidence if r.name else None,
+            "uri": r.uri,
+            "note": r.note,
+        }
+        for i, r in enumerate(results)
+    ]
+    out = [f"**{head}.**", *notes, _df_to_markdown(pd.DataFrame(rows), max_rows=MAX_RESOLVE_ITEMS)]
+
+    matched = [r.uri for r in results if r.status == track_resolve.MATCHED]
+    ready = list(dict.fromkeys(matched))
+    if ready:
+        dupes = len(matched) - len(ready)
+        out.append(
+            "Matched URIs in order, ready for `spotify_create_playlist`"
+            + (f" ({dupes} duplicate{'s' if dupes != 1 else ''} dropped)" if dupes else "")
+            + ":\n\n" + json.dumps(ready)
+        )
+    if counts[track_resolve.GUESS]:
+        out.append("Best guesses are left out of that list. Confirm them with the user before adding them.")
+    return "\n\n".join(out)
+
+
+def make_resolve_tool(get_client: Callable[[], SpotifyClient]) -> Callable[..., str]:
+    def resolve_tracks(tracks: list[str]) -> str:
+        """Resolve a list of songs written as "Artist - Title" to Spotify
+        track URIs in one call, instead of one `spotify_search` per song.
+        Each is matched against this person's listening history first (no
+        API call, and the version they actually play), then Spotify's
+        catalogue. Every item gets a status: "matched" (safe to use),
+        "best guess" (URI given, but confirm it), "missed", or "error"
+        (search failed; retry later). Only matched URIs go in the
+        ready-to-use list at the end. At most 50 songs per call.
+        """
+        items = [t for t in (tracks or []) if t and t.strip()]
+        if not items:
+            return 'Refused: pass at least one song, written as "Artist - Title".'
+        if len(items) > MAX_RESOLVE_ITEMS:
+            return f"Refused: at most {MAX_RESOLVE_ITEMS} songs per call (got {len(items)}). Split the list."
+
+        notes: list[str] = []
+        try:
+            library, why = _library()
+        except Exception as exc:  # noqa: BLE001 - the catalogue can still answer
+            library, why = None, f"The warehouse couldn't be read ({exc}), so nothing was matched from the library."
+        if why:
+            notes.append(f"_{why}_")
+        try:
+            client: SpotifyClient | None = get_client()
+        except (SpotifyNotConfigured, RemoteStoreNotConfigured) as exc:
+            client = None
+            notes.append(f"_Spotify search unavailable, library matches only: {exc}_")
+
+        results = track_resolve.resolve(
+            items,
+            library,
+            client,
+            search_errors=(SpotifyAuthError, SpotifyAPIError, RedisError, httpx.HTTPError),
+        )
+        return _resolution_report(results, notes)
+
+    return resolve_tracks
 
 
 # -- remote playlist creation -----------------------------------------------
@@ -342,7 +444,8 @@ def spotify_create_playlist(
 ) -> str:
     """Create a new playlist in this person's Spotify account, kept off
     their profile, optionally pre-filled with `track_uris` (values like
-    "spotify:track:...", from `spotify_search` results). This performs a
+    "spotify:track:...", from `resolve_tracks`, `spotify_search`, or a
+    warehouse `track_id` as `spotify:track:<track_id>`). This performs a
     real, immediate write to the user's account with no dry-run mode, only
     call it once the user has clearly asked for a playlist to be created,
     not speculatively. At most 500 tracks per playlist and 20 playlists per

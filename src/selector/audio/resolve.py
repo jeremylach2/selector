@@ -18,16 +18,19 @@ from __future__ import annotations
 
 import argparse
 import json
-import re
 import time
 from dataclasses import asdict, dataclass
-from difflib import SequenceMatcher
 from pathlib import Path
 
 import httpx
 import pandas as pd
 
 from selector.audio.fetch import AUDIO_DIR, download_preview
+from selector.matching import (  # noqa: F401 - normalize re-exported
+    DEFAULT_MATCH_THRESHOLD,
+    match_score,
+    normalize,
+)
 from selector.warehouse.build import DEFAULT_DB_PATH
 from selector.warehouse.queries import _connect
 
@@ -38,16 +41,6 @@ ITUNES_SEARCH_URL = "https://itunes.apple.com/search"
 DEEZER_SEARCH_URL = "https://api.deezer.com/search"
 
 USER_AGENT = "Selector/0.1 (portfolio project, keyless public API usage)"
-
-# Below this score a candidate is recorded as unmatched rather than guessed
-# at. Silent bad matches would poison every downstream audio feature, so this
-# is deliberately conservative, see docs/AUDIO_MATCHING.md.
-DEFAULT_MATCH_THRESHOLD = 0.72
-
-# Tokens that change what a recording *is*, not just how it's spelled. A
-# candidate that has one of these and the query doesn't (or vice versa) is
-# probably a different recording of the same song, not the same recording.
-MODIFIER_TOKENS = ("live", "remix", "acoustic", "cover", "remaster", "demo", "instrumental")
 
 BATCH_SIZE = 25
 REQUEST_DELAY_SECONDS = 0.2
@@ -76,55 +69,14 @@ class MatchResult:
     local_path: str | None
 
 
-def _strip_parens(text: str) -> str:
-    return re.sub(r"[\(\[][^\)\]]*[\)\]]", " ", text)
-
-
-def normalize(text: str) -> tuple[str, frozenset[str]]:
-    """Lowercase/punctuation-fold `text` and pull out its modifier tokens.
-
-    Returns ``(clean_text, modifiers)``. Modifiers (live/remix/acoustic/...)
-    are stripped from the text used for similarity scoring but kept as a
-    separate signal: a "Live" candidate for a studio original is a bad
-    match, not a good one with noisy formatting.
-    """
-    lowered = text.lower()
-    lowered = re.sub(r"\bfeat\.?\b|\bft\.?\b", " ", lowered)
-    # \w* lets "remaster" match "remastered", "instrumental" match
-    # "instrumentals", etc. These are inflections of the same modifier.
-    found_modifiers = {tok for tok in MODIFIER_TOKENS if re.search(rf"\b{tok}\w*\b", lowered)}
-    cleaned = _strip_parens(lowered)
-    for tok in MODIFIER_TOKENS:
-        cleaned = re.sub(rf"\b{tok}\w*\b", " ", cleaned)
-    cleaned = re.sub(r"[^a-z0-9 ]", " ", cleaned)
-    cleaned = re.sub(r"\s+", " ", cleaned).strip()
-    return cleaned, frozenset(found_modifiers)
-
-
-def _similarity(a: str, b: str) -> float:
-    return SequenceMatcher(None, a, b).ratio()
-
-
 def score_candidate(query_title: str, query_artist: str, candidate: Candidate) -> float:
     """Score one candidate against the query track.
 
-    Weighted title/artist similarity, a small album-match bonus, and a
-    modifier-mismatch penalty for live/remix/acoustic/cover/etc. recordings
-    of the right song that aren't the recording we're actually after.
+    Weighted title/artist similarity and a modifier-mismatch penalty for
+    live/remix/acoustic/cover/etc. recordings of the right song that aren't
+    the recording we're actually after (see `selector.matching`).
     """
-    q_title, q_mods = normalize(query_title)
-    q_artist, _ = normalize(query_artist)
-    c_title, c_mods = normalize(candidate.title)
-    c_artist, _ = normalize(candidate.artist)
-
-    title_sim = _similarity(q_title, c_title)
-    artist_sim = _similarity(q_artist, c_artist)
-    score = 0.55 * title_sim + 0.45 * artist_sim
-
-    if q_mods != c_mods:
-        score -= 0.35
-
-    return max(0.0, min(1.0, score))
+    return match_score(query_title, query_artist, candidate.title, candidate.artist)
 
 
 def _itunes_candidates(client: httpx.Client, title: str, artist: str, limit: int = 5) -> list[Candidate]:

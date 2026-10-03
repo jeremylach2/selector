@@ -18,18 +18,21 @@ it changes:
   `track_detail`.
 - **Live Spotify tools**: `spotify_search`, `spotify_saved_tracks`,
   `spotify_top_artists`, `spotify_top_tracks`, `spotify_recently_played`,
-  and a guarded `spotify_create_playlist` (see
+  `resolve_tracks` (a batch of "Artist - Title" strings to URIs, warehouse
+  first, then Spotify search) and a guarded `spotify_create_playlist` (see
   [Live Spotify tools](#live-spotify-tools)).
 - **The DJ**, `dj_set`: the same five stages as the local tool, picking
   with the fly brain, on a precomputed crate (see [The DJ](#the-dj)).
+- **The crate's fly-brain tools** (`crate_tools.py`): `more_like_this`,
+  `fly_score` and `order_tracks`, read from the same crate as `dj_set`.
+  For a track in the crate they answer exactly as the local tools do. The
+  crate holds only tracks with measured audio (16,700 of 19,386 in the
+  current build), and a track outside it gets a message saying so.
 
 Everything else stays local-only:
 
 - **`reconcile_library`**, which hasn't been checked against the coarse
   deploy warehouse.
-- **The other fly-brain tools** (`more_like_this`, `fly_score`). They read
-  `data/fly_tags.npz` for the whole library and train the mushroom body on
-  the per-play history, neither of which is shipped.
 - **`wrapped_report`**, which writes files next to the warehouse.
 
 ## What data is served
@@ -102,6 +105,8 @@ the existing Blob store because it has atomic `SET NX` and `INCR`.
   the Redis store. The hosted `spotify_create_playlist` is its own
   function with the guardrails below.
 - `src/selector/mcp/dj_tools.py`, the hosted `dj_set`. See [The DJ](#the-dj).
+- `src/selector/mcp/crate_tools.py`, the hosted `more_like_this`,
+  `fly_score` and `order_tracks`, on the DJ's crate.
 - `src/selector/dj/crate.py`, the crate as data: the `Crate` the DJ stages
   read, fly tags as plain CSR index arrays with a numpy Hamming distance
   (so `selector.dj` never imports scipy or the fly brain), and the deploy

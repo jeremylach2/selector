@@ -157,7 +157,27 @@ uv run python scripts/dj_cron.py --commit
 
 From an MCP client, use `dj_set(theme=None, minutes=45, dry_run=True,
 familiar_ratio=0.6)`. `scripts/dj_cron.py` has Task Scheduler and cron
-lines in its docstring. A scheduled `--commit` needs a cached Spotify token
+lines in its docstring.
+
+Three optional arguments steer it. `seed_tracks` replace the seeds the
+Brief would take from recent listening, so the set's coherence anchors on
+those tracks instead (they aren't forced into the set). `exclude_tracks`
+and `exclude_artists` are removed before Select runs, and never become
+seeds either. The run log and the Brief's rationale say what was steered
+and what didn't match the crate.
+
+### Ordering someone else's picks
+
+`order_tracks(tracks)` is the Arc and Critique stages on their own, for a
+list the user or the model chose (`selector/dj/order.py`). Every given
+track is kept. The arc is fitted to their measured energy range, the k-th
+quietest track goes to the k-th lowest point on the curve, and then swaps
+within three positions are kept while they lower a cost of arc distance,
+Select's transition penalty, a heavy penalty per jarring transition, and a
+small bonus for fly-brain neighbours. Critique reads the result as a
+flow check that blocks nothing: a list with one loud track can't fill a
+peak, and the report says so. Tracks with no measured audio are appended
+at the end and flagged. 100 tracks take about a third of a second. A scheduled `--commit` needs a cached Spotify token
 (`~/.selector/token.json`) and never opens a browser login.
 
 ### On the hosted server

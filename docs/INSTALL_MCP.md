@@ -91,8 +91,13 @@ query plus `warehouse_summary` as an orientation call: `warehouse_summary`,
 
 **Live Spotify tools** (need `SPOTIFY_CLIENT_ID`, see `docs/OAUTH_NOTES.md`):
 `spotify_search`, `spotify_saved_tracks`, `spotify_top_artists`,
-`spotify_top_tracks`, `spotify_recently_played`, `spotify_create_playlist`,
-`reconcile_library`. All but `reconcile_library` are also on the hosted
+`spotify_top_tracks`, `spotify_recently_played`, `resolve_tracks`,
+`spotify_create_playlist`, `reconcile_library`. `resolve_tracks` takes up to
+50 songs written as "Artist - Title" and matches each against the warehouse
+first, then Spotify search, returning a status per song (matched, best
+guess, missed, error) and only the matched URIs as a ready list. It works
+without `SPOTIFY_CLIENT_ID` too, from the warehouse alone. All but
+`reconcile_library` are also on the hosted
 server, with its own Spotify login (see `docs/DEPLOY_MCP.md`). After a
 deploy that changes the hosted tool list, reconnect the claude.ai connector
 so it picks up the new list. The hosted server logs in with OAuth through
@@ -107,12 +112,18 @@ in.
 nearest tracks by Hamming distance over fly-brain fingerprints, i.e. content
 similarity, and `fly_score(track)`, the mushroom body's predicted
 approach/avoid valence for a track, trained on this person's actual
-skip/play-out history. Both accept a `track_id` or a name substring.
+skip/play-out history. Both accept a `track_id` or a name substring. Both
+are on the hosted server too, for the tracks in the DJ's crate.
 
 **DJ agent** (needs the fly tags plus `data/audio_features.parquet`):
-`dj_set(theme=None, minutes=45, dry_run=True, familiar_ratio=0.6)` plans a
+`dj_set(theme=None, minutes=45, dry_run=True, familiar_ratio=0.6,
+seed_tracks=None, exclude_tracks=None, exclude_artists=None)` plans a
 themed set through Brief → Arc → Select → Critique → Commit and returns the
-critique chain plus liner notes. It is a dry run unless `dry_run=False` is
+critique chain plus liner notes. `seed_tracks` replace recent listening as
+the set's anchor; the exclusions are never played. `order_tracks(tracks)`
+does only the sequencing, for 2 to 100 tracks picked elsewhere: it keeps
+every one and orders them along an arc fitted to their measured energy,
+then runs the same critique, and returns the URIs in order. Read-only. It is a dry run unless `dry_run=False` is
 passed explicitly, and it never writes a set that failed critique. See
 `docs/DJ_AGENT.md`. It's on the hosted server too, running on an uploaded
 copy of the crate, with the hosted playlist guardrails (see

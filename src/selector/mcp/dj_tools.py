@@ -161,6 +161,9 @@ def dj_set(
     minutes: int = 45,
     dry_run: bool = True,
     familiar_ratio: float = 0.6,
+    seed_tracks: list[str] | None = None,
+    exclude_tracks: list[str] | None = None,
+    exclude_artists: list[str] | None = None,
 ) -> str:
     """Plan a themed DJ set from this person's own library and, only if
     `dry_run` is False, create it as a Spotify playlist kept off the
@@ -184,6 +187,12 @@ def dj_set(
     that fits it rather than leaving it to the clock. `minutes` is 10 to
     180. `familiar_ratio` is the share of tracks from current rotation
     (played in the last 90 days) versus rediscoveries from further back.
+
+    To steer it: `seed_tracks` (`track_id`s or `spotify:track:` URIs) pull
+    the set's sound towards those tracks in place of recent listening; they
+    anchor similarity and aren't forced into the set. `exclude_tracks` and
+    `exclude_artists` (exact names, any case) are never played. To keep a
+    list of your own picks and only order them, use `order_tracks`.
 
     `dry_run` defaults to True and never touches the account. Only pass
     `dry_run=False` once the user has explicitly asked for the playlist to
@@ -223,6 +232,9 @@ def dj_set(
             recent=recent,
             log_dir=None,
             writer=writer,
+            seed_track_ids=seed_tracks,
+            exclude_track_ids=exclude_tracks,
+            exclude_artists=exclude_artists,
         )
     except ValueError as exc:
         return str(exc)

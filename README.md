@@ -86,13 +86,13 @@ claude mcp add selector -- uv --directory "$PWD" run selector-mcp
 
 Then ask Claude Code something like *"what did I binge in March and then abandon?"* [docs/INSTALL_MCP.md](docs/INSTALL_MCP.md) covers Claude Desktop and the tool list. [docs/DEPLOY_MCP.md](docs/DEPLOY_MCP.md) covers the hosted HTTP variant. The warehouse tools need only the export. The live Spotify tools need a dev app ([docs/OAUTH_NOTES.md](docs/OAUTH_NOTES.md)). The fly and DJ tools need the tagger outputs, which take the full audio, labelling and fine-tuning pipeline to rebuild. The docs for each step give the exact commands.
 
-**Tests:** `uv run pytest` (323 tests, no personal data needed) and `uv run ruff check .`. CI runs both, plus a guard (`scripts/check_personal_data.py`) that fails the build if an export file, audio, a token or an `ip_addr` value is ever committed.
+**Tests:** `uv run pytest` (376 tests, no personal data needed) and `uv run ruff check .`. CI runs both, plus a guard (`scripts/check_personal_data.py`) that fails the build if an export file, audio, a token or an `ip_addr` value is ever committed.
 
 ## Run your own
 
 Both extras below are optional and single-user. They need a free Vercel account, and the hosted server also needs a Spotify developer app and an Upstash Redis store from the Vercel Marketplace.
 
-**Hosted MCP server.** `api/index.py` serves the warehouse tools, the live Spotify tools (including a guarded `spotify_create_playlist`) and the DJ (`dj_set`) over Streamable HTTP, so claude.ai or any MCP client can reach your data from anywhere. It is its own OAuth server with Spotify as the login, and only your Spotify account gets a token. Only a coarse copy of the warehouse is served (hourly buckets, no timestamps), downloaded from a private Vercel Blob store on cold start, so no personal data is in git or in the deployment. Build and upload it with:
+**Hosted MCP server.** `api/index.py` serves the warehouse tools, the live Spotify tools (including `resolve_tracks` and a guarded `spotify_create_playlist`), the DJ (`dj_set`) and the crate's fly-brain tools (`more_like_this`, `fly_score`, `order_tracks`) over Streamable HTTP, so claude.ai or any MCP client can reach your data from anywhere. It is its own OAuth server with Spotify as the login, and only your Spotify account gets a token. Only a coarse copy of the warehouse is served (hourly buckets, no timestamps), downloaded from a private Vercel Blob store on cold start, so no personal data is in git or in the deployment. Build and upload it with:
 
 ```bash
 uv run python -m selector.warehouse.build --deploy

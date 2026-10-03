@@ -193,21 +193,26 @@ def resolve_theme(requested: str) -> Theme:
     )
 
 
-def pick_seeds(theme: Theme, recent: pd.DataFrame, crate: Crate, n: int = N_SEEDS) -> list[str]:
+def pick_seeds(
+    theme: Theme, recent: pd.DataFrame, crate: Crate, n: int = N_SEEDS, exclude: frozenset[str] = frozenset()
+) -> list[str]:
     """Recent crate tracks that share a mood with the theme, most recent
     first. Topped up with the fly's highest-taste on-theme tracks if recent
-    listening doesn't supply enough, seeds anchor coherence in Select."""
+    listening doesn't supply enough, seeds anchor coherence in Select.
+    Tracks in `exclude` are never seeds, so an excluded artist can't steer
+    the set's sound either."""
     tracks = crate.by_id()
     on_theme = tracks["mood_tags"].apply(lambda tags: bool(set(tags) & set(theme.mood_tags)))
 
     seeds: list[str] = []
     for tid in recent["track_id"]:
-        if tid in tracks.index and on_theme[tid] and tid not in seeds:
+        if tid in tracks.index and on_theme[tid] and tid not in seeds and tid not in exclude:
             seeds.append(tid)
         if len(seeds) == n:
             return seeds
 
-    fallback = tracks[on_theme & ~tracks.index.isin(seeds)].sort_values("taste", ascending=False)
+    fallback = tracks[on_theme & ~tracks.index.isin(seeds) & ~tracks.index.isin(list(exclude))]
+    fallback = fallback.sort_values("taste", ascending=False)
     seeds.extend(fallback["track_id"].head(n - len(seeds)))
     return seeds
 
@@ -217,8 +222,15 @@ def build_brief(
     crate: Crate,
     now: datetime,
     requested_theme: str | None = None,
+    seed_track_ids: list[str] | None = None,
+    exclude: frozenset[str] = frozenset(),
 ) -> Brief:
-    """`recent` needs `track_id` and `artist_name` columns, newest first."""
+    """`recent` needs `track_id` and `artist_name` columns, newest first.
+
+    `seed_track_ids`, when given, replace the seeds picked from recent
+    listening: the caller is steering the set's sound. Seeds outside the
+    crate (no measured audio) or in `exclude` are dropped, and if none
+    are left the usual seeds are picked instead."""
     hour = now.hour
     # Friday evening counts: that's when a weekend night actually starts.
     is_weekend = now.weekday() >= 5 or (now.weekday() == 4 and hour >= 17)
@@ -242,9 +254,21 @@ def build_brief(
         ((m, round(float(w), 3)) for m, w in zip(MOOD_VOCAB, profile) if w > 0),
         key=lambda x: -x[1],
     )[:4]
-    seeds = pick_seeds(theme, recent, crate)
+    requested = list(dict.fromkeys(seed_track_ids or []))
+    in_crate = set(crate.tracks["track_id"])
+    usable = [t for t in requested if t in in_crate and t not in exclude]
+    seeds = usable or pick_seeds(theme, recent, crate, exclude=exclude)
 
     rationale = why
+    if usable:
+        rationale += f" Steered towards {len(usable)} requested seed track{'s' if len(usable) != 1 else ''}"
+        dropped = len(requested) - len(usable)
+        rationale += f" ({dropped} not in the crate or excluded, ignored)." if dropped else "."
+    elif requested:
+        rationale += (
+            f" None of the {len(requested)} requested seed tracks are in the crate (only tracks with "
+            "measured audio are), so the seeds came from recent listening."
+        )
     if artists:
         rationale += f" Recent rotation leans on {', '.join(a for a, _ in artists[:3])}"
         rationale += f", mostly {', '.join(m for m, _ in moods[:2])}." if moods else "."

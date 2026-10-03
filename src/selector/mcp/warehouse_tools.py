@@ -118,6 +118,8 @@ def search_library(query: str, limit: int = 20) -> str:
     contains `query` (case-insensitive substring match), ranked by play
     count. Use this to find a `track_id` before calling `track_detail`, or
     to check whether an artist appears in this person's history at all.
+    A `track_id` is the Spotify track ID, so `spotify:track:<track_id>` is
+    its URI for `spotify_create_playlist`, no search needed.
     """
     return _run(queries.search_library, query=query, limit=limit)
 

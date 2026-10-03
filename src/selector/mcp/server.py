@@ -22,6 +22,7 @@ from mcp.server.mcpserver import MCPServer
 
 from selector.fly import pipeline as fly_pipeline
 from selector.fly.lsh import hamming_distances, hamming_top_k
+from selector.mcp.crate_tools import tie_note
 from selector.mcp.spotify_tools import (
     LOCAL_READ_TOOLS,
     READ_ANNOTATIONS,
@@ -118,7 +119,8 @@ def spotify_create_playlist(
 ) -> str:
     """Create a new playlist in this person's Spotify account, optionally
     pre-filled with `track_uris` (values like "spotify:track:...", from
-    `spotify_search` results or elsewhere). This performs a real, immediate
+    `resolve_tracks`, `spotify_search`, or a warehouse `track_id` as
+    `spotify:track:<track_id>`). This performs a real, immediate
     write to the user's account with no dry-run mode, only call it once the
     user has clearly asked for a playlist to be created, not speculatively.
     """
@@ -298,29 +300,8 @@ def more_like_this(track: str, k: int = 10) -> str:
 
     df = pd.DataFrame(rows)[["name", "artist", "hamming_distance"]] if rows else pd.DataFrame()
     header = f"Nearest to **{name}** by {artist}:\n\n"
-    return header + _df_to_markdown(df) + _tie_note(tags, idx, [r["hamming_distance"] for r in rows])
-
-
-def _tie_note(tags, query_idx: int, shown: list[int]) -> str:
-    """Say how many tracks tie at each distance that appears more than once
-    among the neighbours shown, so ties aren't read as a ranking."""
-    all_distances = hamming_distances(tags[query_idx], tags)
-    notes = []
-    for d in sorted(set(shown)):
-        if shown.count(d) < 2:
-            continue
-        # The seed itself sits at distance 0 and isn't a neighbour.
-        tied = int((all_distances == d).sum()) - (1 if d == 0 else 0)
-        notes.append(f"{tied:,} tracks tie at distance {d}")
-    if not notes:
-        return ""
-    how = (
-        "Tracks at distance 0 have identical fingerprints, so they share one taste score too and are "
-        "ordered by play count."
-        if 0 in shown and shown.count(0) > 1
-        else "They're ordered by the fly's predicted taste (`fly_score`), then play count."
-    )
-    return "\n\n" + "; ".join(notes) + ". The fly can't tell tied tracks apart. " + how + " Neither is similarity."
+    shown = [r["hamming_distance"] for r in rows]
+    return header + _df_to_markdown(df) + tie_note(hamming_distances(tags[idx], tags), shown)
 
 
 @server.tool()
@@ -329,8 +310,10 @@ def fly_score(track: str) -> str:
     minus avoid drive from the mushroom body's KC->MBON synapses, trained
     chronologically on this person's actual skip/play-out history (see
     `selector.fly.mbon`). Positive means the fly predicts this person
-    approaches this track; negative means it predicts avoidance. `track`
-    accepts an exact `track_id` or a name substring.
+    approaches this track; negative means it predicts avoidance. Raw
+    valence is positive for nearly every track (play-outs outnumber skips
+    in the history), so its rank among all tracks is the part to go by.
+    `track` accepts an exact `track_id` or a name substring.
     """
     state = _load_fly_state()
     if state is None:
@@ -349,7 +332,11 @@ def fly_score(track: str) -> str:
     mbon = _get_production_mbon(track_ids, tags)
     score = mbon.valence(tags[idx])
     verdict = "approach" if score > 0 else "avoid" if score < 0 else "neutral"
-    return f"**{name}** by {artist}: fly valence = {score:.3f} ({verdict})."
+    rank = int((_get_fly_taste(track_ids, tags) > score).sum()) + 1
+    return (
+        f"**{name}** by {artist}: fly valence = {score:.3f} ({verdict}), "
+        f"ranked {rank:,} of the {len(track_ids):,} fingerprinted tracks."
+    )
 
 
 # -- DJ agent -------------------------------------------------------------
@@ -367,6 +354,9 @@ def dj_set(
     minutes: int = 45,
     dry_run: bool = True,
     familiar_ratio: float = 0.6,
+    seed_tracks: list[str] | None = None,
+    exclude_tracks: list[str] | None = None,
+    exclude_artists: list[str] | None = None,
 ) -> str:
     """Plan a themed DJ set from this person's own library and, only if
     `dry_run` is False, create it as a Spotify playlist kept off the
@@ -390,19 +380,22 @@ def dj_set(
     share of tracks from current rotation (played in the last 90 days)
     versus rediscoveries from further back.
 
+    To steer it: `seed_tracks` (`track_id`s or `spotify:track:` URIs) pull
+    the set's sound towards those tracks in place of recent listening; they
+    anchor similarity and aren't forced into the set. `exclude_tracks` and
+    `exclude_artists` (exact names, any case) are never played. To keep a
+    list of your own picks and only order them, use `order_tracks`.
+
     `dry_run` defaults to True and never touches the account. Only pass
     `dry_run=False` once the user has explicitly asked for the playlist to
     be created; a set that fails critique twice is never written.
     """
     from selector.dj.agent import render, run_dj
-    from selector.dj.pool import build_crate
 
-    global _dj_crate
     db_path = _db_path()
-    if not db_path.exists():
-        return _missing_db_message(db_path)
-    if not fly_pipeline.FLY_TAGS_PATH.exists():
-        return _missing_fly_tags_message(fly_pipeline.FLY_TAGS_PATH)
+    problem = _dj_crate_problem(db_path)
+    if problem:
+        return problem
 
     try:
         client = local_client()
@@ -410,22 +403,69 @@ def dj_set(
         client = None
 
     try:
-        if _dj_crate is None:
-            _dj_crate = build_crate(db_path=db_path)
         run = run_dj(
-            _dj_crate,
+            _get_dj_crate(db_path),
             theme=theme,
             minutes=minutes,
             dry_run=dry_run,
             familiar_ratio=familiar_ratio,
             client=client,
             db_path=db_path,
+            seed_track_ids=seed_tracks,
+            exclude_track_ids=exclude_tracks,
+            exclude_artists=exclude_artists,
         )
     except ValueError as exc:
         return str(exc)
     except Exception as exc:  # noqa: BLE001 - surfaced to the model as text, not a crash
         return f"DJ run failed: {exc}"
     return render(run)
+
+
+@server.tool()
+def order_tracks(tracks: list[str]) -> str:
+    """Put a list of tracks in DJ order, keeping every one: the quietest
+    opens, energy builds to a peak and comes down, with tempo and energy
+    jumps between neighbours kept small and fly-brain neighbours placed
+    together. Use it to sequence a set the user or you picked (`dj_set`
+    picks its own tracks). `tracks` are `track_id`s or `spotify:track:`
+    URIs, 2 to 100. Energy and tempo are measured from audio, so tracks
+    without measured audio are appended at the end and flagged. Read-only:
+    the answer ends with the URIs in order, for `spotify_create_playlist`.
+    """
+    from selector.dj.agent import track_id_of
+    from selector.dj.order import order_tracks as _order
+    from selector.dj.order import render
+
+    db_path = _db_path()
+    problem = _dj_crate_problem(db_path)
+    if problem:
+        return problem
+    try:
+        ordering = _order(_get_dj_crate(db_path), [track_id_of(t) for t in tracks or [] if t.strip()])
+    except ValueError as exc:
+        return str(exc)
+    except Exception as exc:  # noqa: BLE001 - surfaced to the model as text, not a crash
+        return f"Ordering failed: {exc}"
+    labels = queries.tracks_by_ids(ordering.unplaced, db_path=db_path)
+    return render(ordering, {r.track_id: (r.name, r.artist) for r in labels.itertuples()})
+
+
+def _dj_crate_problem(db_path: Path) -> str | None:
+    if not db_path.exists():
+        return _missing_db_message(db_path)
+    if not fly_pipeline.FLY_TAGS_PATH.exists():
+        return _missing_fly_tags_message(fly_pipeline.FLY_TAGS_PATH)
+    return None
+
+
+def _get_dj_crate(db_path: Path):
+    from selector.dj.pool import build_crate
+
+    global _dj_crate
+    if _dj_crate is None:
+        _dj_crate = build_crate(db_path=db_path)
+    return _dj_crate
 
 
 def main() -> None:
